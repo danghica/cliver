@@ -21,6 +21,9 @@ public func generateDriver(manifest: Manifest): String {
     sb.append(pkg)
     sb.append("\n")
     sb.append("// Do not edit by hand.\n\n")
+    sb.append("package ")
+    sb.append(pkg)
+    sb.append("\n\n")
     sb.append("import std.env.*\n")
     sb.append("import std.io.*\n")
     sb.append("import std.collection.*\n")
@@ -71,13 +74,14 @@ public func generateDriver(manifest: Manifest): String {
     // Emit main(): get args, dispatch by command
     sb.append("main(): Int64 {\n")
     sb.append("    let allArgs: Array<String> = getCommandLine()\n")
-    sb.append("    if (allArgs.size < 1) {\n")
+    sb.append("    // argv[0] is program name (path when run via cjpm run); first real arg is command\n")
+    sb.append("    if (allArgs.size < 2) {\n")
     sb.append("        eprintln(\"Usage: <command> [args...]  Use 'help' for commands.\")\n")
     sb.append("        return 64\n")
     sb.append("    }\n")
-    sb.append("    let command: String = allArgs[0]\n")
+    sb.append("    let command: String = allArgs[1]\n")
     sb.append("    var argsList: ArrayList<String> = ArrayList<String>()\n")
-    sb.append("    for (idx in 1..allArgs.size) { argsList.add(all: [allArgs[idx]]) }\n")
+    sb.append("    for (idx in 2..allArgs.size) { argsList.add(all: [allArgs[idx]]) }\n")
     sb.append("    if (command == \"help\") {\n")
     sb.append("        _printHelp()\n")
     sb.append("        return 0\n")
@@ -111,13 +115,13 @@ public func generateDriver(manifest: Manifest): String {
         let overloads: ArrayList<CommandInfo> = overloadsList.get(k).getOrThrow()
         let cmd0: CommandInfo = overloads.get(0).getOrThrow()
         if (cmd0.isConstructor) {
-            sb.append("  ")
+            sb.append("    println(\"  ")
             sb.append(key)
-            sb.append(" new [args...]  (constructor)\n")
+            sb.append(" new [args...]  (constructor)\")\n")
         } else {
-            sb.append("  ")
+            sb.append("    println(\"  ")
             sb.append(key)
-            sb.append(" [args...]\n")
+            sb.append(" [args...]\")\n")
         }
         k++
     }

@@ -87,9 +87,9 @@ public class Lesson {
 }
 
 // ---------------------------------------------------------------------------
-// Entrypoint: demo add, print, remove by reference, print again
+// Demo: add, print, remove by reference (call demo() to run; CLI uses generated main)
 // ---------------------------------------------------------------------------
-main() {
+public func demo(): Unit {
     let lesson = Lesson()
     let alice = Student("Alice", 1001)
     let bob = Student("Bob", 1002)

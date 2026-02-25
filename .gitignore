@@ -8,6 +8,8 @@ __pycache__/
 
 # Cangjie / cjpm
 target/
+# Generated driver (belongs in target package's src/, not here)
+src/cli_driver.cj
 
 # IDE
 .cursor/

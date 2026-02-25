@@ -18,7 +18,7 @@ Use the Cangjie 1.0.x (cjnative) toolchain. **Source the Cangjie environment fir
 ```bash
 source /path/to/cangjie/envsetup.sh   # or add to your shell profile
 cjpm build
-cjpm run -- --pkg /path/to/your/package
+cjpm run --run-args="--pkg /path/to/your/package"
 # or
 PKG_SRC=/path/to/your/package cjpm run
 ```
@@ -34,10 +34,10 @@ The tool writes **`src/cli_driver.cj`** into the target package directory (if yo
 3. From the target package root:
    ```bash
    cjpm build
-   cjpm run -- help
-   cjpm run -- Student new Alice 1001
-   cjpm run -- Lesson new
-   cjpm run -- Lesson new   # ref:2
+   cjpm run --run-args="help"
+   cjpm run --run-args="Student new Alice 1001"
+   cjpm run --run-args="Lesson new"
+   cjpm run --run-args="Lesson new"   # ref:2
    # use ref:1, ref:2 in later commands if the driver exposes instance methods (future)
    ```
 
@@ -56,11 +56,11 @@ The target package may need `std.env`, `std.io`, `std.collection`, and `std.conv
 
 ```bash
 cjpm build
-cjpm run -- --pkg sample_cangjie_package
+cjpm run --run-args="--pkg sample_cangjie_package"
 # Then in sample_cangjie_package: comment out or rename main() in src/main.cj, then:
-cd sample_cangjie_package && cjpm build && cjpm run -- help
-cd sample_cangjie_package && cjpm run -- Student new Bob 2000
-cd sample_cangjie_package && cjpm run -- Lesson new
+cd sample_cangjie_package && cjpm build && cjpm run --run-args="help"
+cd sample_cangjie_package && cjpm run --run-args="Student new Bob 2000"
+cd sample_cangjie_package && cjpm run --run-args="Lesson new"
 ```
 
 ## File layout
@@ -69,6 +69,20 @@ cd sample_cangjie_package && cjpm run -- Lesson new
 - `src/parser.cj` — reads `.cj` files, extracts package name and command manifest.
 - `src/codegen.cj` — from manifest, emits `cli_driver.cj` (object store, arg conversion, dispatch).
 - Generated **`cli_driver.cj`** — lives in the target package’s `src/`; user runs `cjpm build` and `cjpm run` from the target root.
+
+## Documentation
+
+Detailed documentation lives in the **`docs/`** directory:
+
+- [docs/README.md](docs/README.md) — index and quick links
+- [docs/overview.md](docs/overview.md) — what Clive does and high-level workflow
+- [docs/user-guide.md](docs/user-guide.md) — build, run, environment, and using the generated CLI
+- [docs/architecture.md](docs/architecture.md) — design and component responsibilities
+- [docs/generated-driver.md](docs/generated-driver.md) — how the generated CLI driver works
+- [docs/api-reference.md](docs/api-reference.md) — parser/codegen types and public APIs
+- [docs/limitations-and-future.md](docs/limitations-and-future.md) — v1 limitations and possible improvements
+- [docs/development.md](docs/development.md) — contributing and file layout
+- [docs/cangjie-and-corpus.md](docs/cangjie-and-corpus.md) — Cangjie toolchain and CangjieCorpus
 
 ## Limitations (v1)
 

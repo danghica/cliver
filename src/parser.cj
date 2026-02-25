@@ -68,12 +68,30 @@ func isRefType(typeStr: String): Bool {
     true
 }
 
+// Count occurrences of a character in a string
+func countChar(s: String, c: Byte): Int64 {
+    var n: Int64 = 0
+    var i: Int64 = 0
+    while (i < s.size) {
+        if (s.get(i).getOrThrow() == c) { n++ }
+        i++
+    }
+    n
+}
+
 // Parse a single .cj file content; append commands to the list; return package name if found (else empty)
 func parseFileContent(content: String, path: String, commands: ArrayList<CommandInfo>, packageName: ArrayList<String>, currentClass: ArrayList<String>): Unit {
     let lines: Array<String> = content.split("\n", removeEmpty: false)
     var i: Int64 = 0
+    var braceDepth: Int64 = 0
     while (i < lines.size) {
         let line: String = trimSpace(lines[i])
+        let openBraces: Int64 = countChar(line, 123)   // '{'
+        let closeBraces: Int64 = countChar(line, 125) // '}'
+        braceDepth = braceDepth + openBraces - closeBraces
+        if (braceDepth == 0) {
+            currentClass.clear()
+        }
         // package declaration
         if (line.startsWith("package ")) {
             let rest: String = trimSpace(line.removePrefix("package "))
@@ -84,8 +102,8 @@ func parseFileContent(content: String, path: String, commands: ArrayList<Command
                 packageName.add(all: [name])
             }
         }
-        // public func Name(
-        if (line.startsWith("public func ")) {
+        // public func Name(  (only top-level: not inside a class)
+        if (line.startsWith("public func ") && currentClass.size == 0) {
             let rest: String = line.removePrefix("public func ")
             let openParen: Option<Int64> = rest.indexOf("(")
             if (let Option<Int64>.Some(op) <- openParen) {
