@@ -1,0 +1,6 @@
+[package]
+cjc-version = "1.0.5"
+name = "lesson_demo"
+description = "Sample Cangjie package for package-to-cli testing: Student and Lesson classes"
+version = "1.0.0"
+output-type = "executable"

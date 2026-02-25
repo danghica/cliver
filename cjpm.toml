@@ -1,0 +1,11 @@
+[package]
+cjc-version = "1.0.5"
+name = "pkgcli"
+description = "Cangjie package-to-CLI utility: parses package source, generates a CLI driver that exposes public functions and constructors as commands."
+version = "0.1.0"
+output-type = "executable"
+
+[dependencies]
+
+[target.darwin_aarch64_cjnative.bin-dependencies]
+path-option = ["/Users/danghica/cangjie/modules/darwin_aarch64_cjnative"]

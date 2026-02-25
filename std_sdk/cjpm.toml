@@ -1,0 +1,11 @@
+[package]
+name = "std"
+cjc-version = "1.0.5"
+version = "1.0.0"
+output-type = "static"
+description = "Wrapper to use SDK precompiled std via bin-dependencies"
+
+[dependencies]
+
+[target.darwin_aarch64_cjnative.bin-dependencies]
+path-option = ["/Users/danghica/cangjie/modules/darwin_aarch64_cjnative"]

@@ -1,0 +1,14 @@
+# Vector DB and corpus data
+data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Cangjie / cjpm
+target/
+
+# IDE
+.cursor/
+.vscode/

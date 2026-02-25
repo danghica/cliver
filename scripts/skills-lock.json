@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "cangjie-lang": {
+      "source": "ystyle/cangjie-lang-skill",
+      "sourceType": "github",
+      "computedHash": "58e4fd746c7ca490f9700ab38b5747fd9d3671549141f163cb7c54c54d1a97c5"
+    }
+  }
+}
