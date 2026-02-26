@@ -37,9 +37,8 @@ The tool writes **`src/cli_driver.cj`** into the target package directory (if yo
    cjpm run --run-args="help"
    cjpm run --run-args="Student new Alice 1001"
    cjpm run --run-args="Lesson new"
-   cjpm run --run-args="Lesson new"   # ref:2
-   # use ref:1, ref:2 in later commands if the driver exposes instance methods (future)
    ```
+   Each separate `cjpm run` starts a new process, so refs reset to `ref:1`. To get **ref:1**, **ref:2**, **ref:3** in one run, pass multiple commands separated by **`;`** (e.g. `cjpm run --run-args="Student new Alice 1001 ; Lesson new ; Lesson new"`). The driver may print those ref ids for future use (e.g. instance methods).
 
 The target package may need `std.env`, `std.io`, `std.collection`, and `std.convert` in its `cjpm.toml` dependencies for the generated driver to compile.
 

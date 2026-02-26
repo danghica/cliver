@@ -1,13 +1,13 @@
 /**
  * Source parser for Cangjie package: extracts package name, public functions, and public constructors.
- * Outputs a manifest (in-memory) for the code generator.
- * Parsing is line-based and pattern-based; handles a subset of Cangjie syntax.
+ * Uses std.ast (cangjieLex, parseProgram) for parsing; outputs a manifest for the code generator.
  */
 package pkgcli
 
 import std.fs.*
 import std.io.*
 import std.collection.ArrayList
+import std.ast.*
 
 // Manifest: package name + list of commands (functions and constructors)
 public class Manifest {
@@ -49,133 +49,111 @@ public class ParamInfo {
     }
 }
 
-// Trim leading/trailing whitespace from a string
-func trimSpace(s: String): String {
-    s.trimStart(" \t\n\r").trimEnd(" \t\n\r")
-}
-
 // Check if type string looks like a reference type (class) for our purposes
 func isRefType(typeStr: String): Bool {
-    // Simple heuristic: not a primitive, not Unit, not Option<...> value part
     if (typeStr == "Unit" || typeStr == "Int64" || typeStr == "Int32" || typeStr == "Float64" || typeStr == "Float32" || typeStr == "Bool" || typeStr == "String") {
         return false
     }
-    // Option<T> return: we don't store Option as ref; the inner T might be
     if (typeStr.startsWith("Option<")) {
         return false
     }
-    // Assume class types are non-primitive identifiers (e.g. Student, Lesson)
     true
 }
 
-// Count occurrences of a character in a string
-func countChar(s: String, c: Byte): Int64 {
-    var n: Int64 = 0
+// Return true if decl has public modifier
+func isPublic(decl: Decl): Bool {
     var i: Int64 = 0
-    while (i < s.size) {
-        if (s.get(i).getOrThrow() == c) { n++ }
+    while (i < decl.modifiers.size) {
+        let m: Modifier = decl.modifiers.get(i).getOrThrow()
+        if (m.keyword.value == "public") {
+            return true
+        }
         i++
     }
-    n
+    false
 }
 
-// Parse a single .cj file content; append commands to the list; return package name if found (else empty)
-func parseFileContent(content: String, path: String, commands: ArrayList<CommandInfo>, packageName: ArrayList<String>, currentClass: ArrayList<String>): Unit {
-    let lines: Array<String> = content.split("\n", removeEmpty: false)
+// Build package name string from PackageHeader (e.g. "a.b.c" or "lesson_demo")
+func packageNameFromHeader(header: PackageHeader): String {
+    let raw: String = header.toTokens().toString()
+    if (raw.startsWith("package ")) {
+        return raw.removePrefix("package ").trimStart(" \t").trimEnd(" \t")
+    }
+    raw
+}
+
+// Extract return type string from FuncDecl; "Unit" if missing or on error
+func getReturnTypeStr(fd: FuncDecl): String {
+    try {
+        fd.declType.toTokens().toString()
+    } catch (_) {
+        "Unit"
+    }
+}
+
+// Build ParamInfo list from FuncDecl.funcParams
+func getParamList(fd: FuncDecl): ArrayList<ParamInfo> {
+    let list: ArrayList<ParamInfo> = ArrayList<ParamInfo>()
     var i: Int64 = 0
-    var braceDepth: Int64 = 0
-    while (i < lines.size) {
-        let line: String = trimSpace(lines[i])
-        let openBraces: Int64 = countChar(line, 123)   // '{'
-        let closeBraces: Int64 = countChar(line, 125) // '}'
-        braceDepth = braceDepth + openBraces - closeBraces
-        if (braceDepth == 0) {
-            currentClass.clear()
-        }
-        // package declaration
-        if (line.startsWith("package ")) {
-            let rest: String = trimSpace(line.removePrefix("package "))
-            // take until comment or end of line (simplified: rest is the name, may have comment)
-            let idx: Option<Int64> = rest.indexOf("//")
-            let name: String = if (let Option<Int64>.Some(k) <- idx) { trimSpace(rest[0..k]) } else { rest }
-            if (name.size > 0) {
-                packageName.add(all: [name])
-            }
-        }
-        // public func Name(  (only top-level: not inside a class)
-        if (line.startsWith("public func ") && currentClass.size == 0) {
-            let rest: String = line.removePrefix("public func ")
-            let openParen: Option<Int64> = rest.indexOf("(")
-            if (let Option<Int64>.Some(op) <- openParen) {
-                let funcName: String = trimSpace(rest[0..op])
-                let afterParen: String = rest[(op + 1)..rest.size]
-                let closeParen: Option<Int64> = afterParen.indexOf(")")
-                if (let Option<Int64>.Some(cp) <- closeParen) {
-                    let paramsStr: String = trimSpace(afterParen[0..cp])
-                    let afterClose: String = trimSpace(afterParen[(cp + 1)..afterParen.size])
-                    var returnType: String = "Unit"
-                    if (afterClose.startsWith(":")) {
-                        let typePart: String = trimSpace(afterClose.removePrefix(":"))
-                        let endType: Option<Int64> = typePart.indexOf(" ")
-                        let endType2: Option<Int64> = typePart.indexOf("{")
-                        var endIdx: Int64 = typePart.size
-                        if (let Option<Int64>.Some(e) <- endType) { endIdx = e }
-                        if (let Option<Int64>.Some(e2) <- endType2) { if (e2 < endIdx) { endIdx = e2 } }
-                        returnType = trimSpace(typePart[0..endIdx])
-                    }
-                    let params: ArrayList<ParamInfo> = ArrayList<ParamInfo>()
-                    if (paramsStr.size > 0) {
-                        let paramList: Array<String> = paramsStr.split(",", removeEmpty: false)
-                        for (p in paramList) {
-                            let pt: String = trimSpace(p)
-                            let colon: Option<Int64> = pt.indexOf(":")
-                            if (let Option<Int64>.Some(ci) <- colon) {
-                                let pname: String = trimSpace(pt[0..ci])
-                                let ptype: String = trimSpace(pt[(ci + 1)..pt.size])
-                                params.add(all: [ParamInfo(pname, ptype)])
-                            }
-                        }
-                    }
-                    commands.add(all: [CommandInfo(funcName, false, "", params, returnType, isRefType(returnType))])
-                }
-            }
-        }
-        // public class ClassName
-        if (line.startsWith("public class ")) {
-            let rest: String = trimSpace(line.removePrefix("public class "))
-            let spaceOrBrace: Option<Int64> = rest.indexOf(" ")
-            let brace: Option<Int64> = rest.indexOf("{")
-            var endIdx: Int64 = rest.size
-            if (let Option<Int64>.Some(b) <- brace) { endIdx = b }
-            if (let Option<Int64>.Some(s) <- spaceOrBrace) { if (s < endIdx) { endIdx = s } }
-            let className: String = trimSpace(rest[0..endIdx])
-            currentClass.clear()
-            currentClass.add(all: [className])
-        }
-        // public init(
-        if (line.startsWith("public init(")) {
-            let rest: String = line.removePrefix("public init(")
-            let closeParen: Option<Int64> = rest.indexOf(")")
-            if (let Option<Int64>.Some(cp) <- closeParen) {
-                let paramsStr: String = trimSpace(rest[0..cp])
-                let params: ArrayList<ParamInfo> = ArrayList<ParamInfo>()
-                if (paramsStr.size > 0) {
-                    let paramList: Array<String> = paramsStr.split(",", removeEmpty: false)
-                    for (p in paramList) {
-                        let pt: String = trimSpace(p)
-                        let colon: Option<Int64> = pt.indexOf(":")
-                        if (let Option<Int64>.Some(ci) <- colon) {
-                            let pname: String = trimSpace(pt[0..ci])
-                            let ptype: String = trimSpace(pt[(ci + 1)..pt.size])
-                            params.add(all: [ParamInfo(pname, ptype)])
-                        }
-                    }
-                }
-                let cname: String = if (currentClass.size > 0) { currentClass.get(0).getOrThrow() } else { "" }
-                commands.add(all: [CommandInfo("init", true, cname, params, cname, true)])
-            }
-        }
+    while (i < fd.funcParams.size) {
+        let fp: FuncParam = fd.funcParams.get(i).getOrThrow()
+        let pname: String = fp.identifier.value
+        let ptype: String = fp.paramType.toTokens().toString()
+        list.add(all: [ParamInfo(pname, ptype)])
         i++
+    }
+    list
+}
+
+// Collect one decl from class body: if public init, add to commands
+func collectClassBodyDecl(className: String, decl: Decl, commands: ArrayList<CommandInfo>): Unit {
+    match (decl) {
+        case fd: FuncDecl =>
+            if (fd.keyword.kind == TokenKind.INIT && isPublic(fd)) {
+                let params: ArrayList<ParamInfo> = getParamList(fd)
+                commands.add(all: [CommandInfo("init", true, className, params, className, true)])
+            }
+        case _ => ()
+    }
+}
+
+// Collect public init commands from a class body into commands list
+func collectPublicInits(className: String, body: Body, commands: ArrayList<CommandInfo>): Unit {
+    var i: Int64 = 0
+    while (i < body.decls.size) {
+        collectClassBodyDecl(className, body.decls.get(i).getOrThrow(), commands)
+        i++
+    }
+}
+
+// Process one parsed Program: update packageName (if not set), append public commands
+func processProgram(program: Program, packageName: ArrayList<String>, commands: ArrayList<CommandInfo>): Unit {
+    let header: PackageHeader = program.packageHeader
+    let pkgStr: String = packageNameFromHeader(header)
+    if (pkgStr.size > 0 && packageName.size == 0) {
+        packageName.add(all: [pkgStr])
+    }
+    var i: Int64 = 0
+    while (i < program.decls.size) {
+        collectTopLevelDecl(program.decls.get(i).getOrThrow(), commands)
+        i++
+    }
+}
+
+// Handle one top-level decl: add public class inits or public func to commands
+func collectTopLevelDecl(decl: Decl, commands: ArrayList<CommandInfo>): Unit {
+    match (decl) {
+        case cd: ClassDecl =>
+            if (isPublic(cd)) {
+                collectPublicInits(cd.identifier.value, cd.body, commands)
+            }
+        case fd: FuncDecl =>
+            if (isPublic(fd) && fd.keyword.kind == TokenKind.FUNC) {
+                let params: ArrayList<ParamInfo> = getParamList(fd)
+                let returnType: String = getReturnTypeStr(fd)
+                commands.add(all: [CommandInfo(fd.identifier.value, false, "", params, returnType, isRefType(returnType))])
+            }
+        case _ => ()
     }
 }
 
@@ -210,17 +188,16 @@ public func parsePackage(sourcePath: String): Option<Manifest> {
         let entries: Array<FileInfo> = Directory.readFrom(scanDir)
         let packageName: ArrayList<String> = ArrayList<String>()
         let commands: ArrayList<CommandInfo> = ArrayList<CommandInfo>()
-        let currentClass: ArrayList<String> = ArrayList<String>()
 
         for (entry in entries) {
             let path: Path = entry.path
             let name: String = path.fileName
-            if (name.endsWith(".cj")) {
-                if (!entry.isDirectory()) {
-                    let contentOpt: Option<String> = readFileAsString(path)
-                    if (let Option<String>.Some(content) <- contentOpt) {
-                        parseFileContent(content, path.toString(), commands, packageName, currentClass)
-                    }
+            if (name.endsWith(".cj") && !entry.isDirectory()) {
+                let contentOpt: Option<String> = readFileAsString(path)
+                if (let Option<String>.Some(content) <- contentOpt) {
+                    let tokens: Tokens = cangjieLex(content)
+                    let program: Program = parseProgram(tokens)
+                    processProgram(program, packageName, commands)
                 }
             }
         }

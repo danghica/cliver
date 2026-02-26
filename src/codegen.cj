@@ -44,6 +44,23 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("func _parseRefId(s: String): Option<Int64> {\n")
     sb.append("    if (s.startsWith(\"ref:\")) { Int64.tryParse(s.removePrefix(\"ref:\")) } else { Option<Int64>.None }\n")
     sb.append("}\n\n")
+    sb.append("// Split argv[1..] by \";\" so multiple commands in one run get ref:1, ref:2, ...\n")
+    sb.append("func _splitArgsBySemicolon(allArgs: Array<String>): ArrayList<ArrayList<String>> {\n")
+    sb.append("    let result: ArrayList<ArrayList<String>> = ArrayList<ArrayList<String>>()\n")
+    sb.append("    var current: ArrayList<String> = ArrayList<String>()\n")
+    sb.append("    var i: Int64 = 1\n")
+    sb.append("    while (i < allArgs.size) {\n")
+    sb.append("        let a: String = allArgs[i]\n")
+    sb.append("        if (a == \";\") {\n")
+    sb.append("            if (current.size > 0) { result.add(all: [current]); current = ArrayList<String>() }\n")
+    sb.append("        } else {\n")
+    sb.append("            current.add(all: [a])\n")
+    sb.append("        }\n")
+    sb.append("        i++\n")
+    sb.append("    }\n")
+    sb.append("    if (current.size > 0) { result.add(all: [current]) }\n")
+    sb.append("    result\n")
+    sb.append("}\n\n")
 
     // Group commands by CLI key (class name for constructor, function name for function)
     let keys: ArrayList<String> = ArrayList<String>()
@@ -71,39 +88,49 @@ public func generateDriver(manifest: Manifest): String {
         i++
     }
 
-    // Emit main(): get args, dispatch by command
+    // Emit main(): get args, split by ";" for multi-command, dispatch each segment
     sb.append("main(): Int64 {\n")
     sb.append("    let allArgs: Array<String> = getCommandLine()\n")
-    sb.append("    // argv[0] is program name (path when run via cjpm run); first real arg is command\n")
     sb.append("    if (allArgs.size < 2) {\n")
-    sb.append("        eprintln(\"Usage: <command> [args...]  Use 'help' for commands.\")\n")
+    sb.append("        eprintln(\"Usage: <command> [args...]  Use 'help' for commands. Separate commands with ; for ref:1, ref:2, ...\")\n")
     sb.append("        return 64\n")
     sb.append("    }\n")
-    sb.append("    let command: String = allArgs[1]\n")
-    sb.append("    var argsList: ArrayList<String> = ArrayList<String>()\n")
-    sb.append("    for (idx in 2..allArgs.size) { argsList.add(all: [allArgs[idx]]) }\n")
-    sb.append("    if (command == \"help\") {\n")
-    sb.append("        _printHelp()\n")
-    sb.append("        return 0\n")
-    sb.append("    }\n")
+    sb.append("    let segments: ArrayList<ArrayList<String>> = _splitArgsBySemicolon(allArgs)\n")
+    sb.append("    var segIdx: Int64 = 0\n")
+    sb.append("    while (segIdx < segments.size) {\n")
+    sb.append("        let seg: ArrayList<String> = segments.get(segIdx).getOrThrow()\n")
+    sb.append("        segIdx++\n")
+    sb.append("        if (seg.size < 1) { continue }\n")
+    sb.append("        let command: String = seg.get(0).getOrThrow()\n")
+    sb.append("        var argsList: ArrayList<String> = ArrayList<String>()\n")
+    sb.append("        var ai: Int64 = 1\n")
+    sb.append("        while (ai < seg.size) { argsList.add(all: [seg.get(ai).getOrThrow()]); ai++ }\n")
+    sb.append("        if (command == \"help\") {\n")
+    sb.append("            _printHelp()\n")
+    sb.append("            continue\n")
+    sb.append("        }\n")
 
     // Dispatch: for each key, one block
     var k: Int64 = 0
     while (k < keys.size) {
         let key: String = keys.get(k).getOrThrow()
         let overloads: ArrayList<CommandInfo> = overloadsList.get(k).getOrThrow()
-        sb.append("    if (command == \"")
+        sb.append("        if (command == \"")
         sb.append(key)
         sb.append("\") {\n")
-        sb.append("        return _run")
+        sb.append("            let _code = _run")
         _appendSafeName(sb, key)
         sb.append("(argsList)\n")
-        sb.append("    }\n")
+        sb.append("            if (_code != 0) { return _code }\n")
+        sb.append("            continue\n")
+        sb.append("        }\n")
         k++
     }
 
-    sb.append("    eprintln(\"Unknown command: \" + command)\n")
-    sb.append("    return 64\n")
+    sb.append("        eprintln(\"Unknown command: \" + command)\n")
+    sb.append("        return 64\n")
+    sb.append("    }\n")
+    sb.append("    return 0\n")
     sb.append("}\n\n")
 
     // Helper: print help from manifest
