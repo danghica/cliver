@@ -36,6 +36,22 @@ Carol, 1003
 
 ## Tests
 
+**Cangjie tests** (ref output and single/multi-command):
+
 ```bash
 cjpm test
+```
+
+**Shell script** (equivalent ref-output checks, no Cangjie test harness):
+
+```bash
+./test_ref_output.sh           # use existing build
+BUILD=1 ./test_ref_output.sh   # build then test
+```
+
+**CLI usage script** (runs the generated CLI as in the project README: `help`, `Student new Alice 1001`, `Lesson new`, `demo`):
+
+```bash
+./test_cli_usage.sh            # use existing build
+BUILD=1 ./test_cli_usage.sh    # build then test
 ```
