@@ -11,6 +11,9 @@ target/
 # Generated driver (belongs in target package's src/, not here)
 src/cli_driver.cj
 
+# Optional: distributed-actors-cj (see docs/INSTALL_DISTRIBUTED_ACTORS.md)
+distributed-actors-cj/
+
 # IDE
 .cursor/
 .vscode/

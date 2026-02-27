@@ -192,6 +192,7 @@ public func parsePackage(sourcePath: String): Option<Manifest> {
         for (entry in entries) {
             let path: Path = entry.path
             let name: String = path.fileName
+            if (name == "cli_driver.cj") { continue }
             if (name.endsWith(".cj") && !entry.isDirectory()) {
                 let contentOpt: Option<String> = readFileAsString(path)
                 if (let Option<String>.Some(content) <- contentOpt) {
