@@ -5,7 +5,6 @@
 package pkgcli
 
 import std.fs.*
-import std.io.*
 import std.collection.ArrayList
 import std.ast.*
 

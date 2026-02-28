@@ -39,18 +39,24 @@ cjpm run --run-args="--pkg /path/to/other/package"
 
 ## Tests
 
-From the project root:
+Clive’s standard test suite is the **sample_cangjie_package** integration test. Run it after each compilation:
 
 ```bash
-cjpm test
+./scripts/build_and_test.sh
 ```
 
-Add or extend tests under the Cangjie test layout expected by cjpm (e.g. test source under `src/` or as specified in `cjpm.toml`).
+This builds Clive, generates the driver for `sample_cangjie_package`, builds the sample package, runs `cjpm test` there (Cangjie unit tests), then runs the shell scripts `test_ref_output.sh`, `test_cli_usage.sh`, and the WebSocket backend tests (`node test_backend.js` from the sample package; see `test_backend.sh`). Backend tests require Node.js, `ws`, and `cjpm` on PATH. To run only the integration test (Clive already built):
+
+```bash
+./scripts/test_sample_package.sh
+```
+
+Clive itself has no `test/` directory; the sample package contains Cangjie tests (`src/cli_driver_test.cj`), shell tests (`test_ref_output.sh`, `test_cli_usage.sh`), and WebSocket backend tests (`test_backend.js` / `test_backend.sh`). See the root [README](../README.md#testing-run-before-deployment) for details.
 
 ## Conventions
 
 - **Cangjie**: Follow the project’s Cangjie style (see root README and CangjieCorpus/tools docs). Use `cjpm build`, `cjpm run`, `cjpm test` for build/run/test.
-- **Parser**: Parser is line-based; when adding support for new constructs, consider edge cases (multiline, comments, generics) and document limitations in [Limitations and future](limitations-and-future.md).
+- **Parser**: Parser uses std.ast; when adding support for new constructs, consider edge cases (multiline, comments, generics) and document limitations in [Limitations and future](limitations-and-future.md).
 - **Codegen**: Generated code is intended for the same package (same module). Do not introduce an import of the target package from the driver.
 - **Docs**: Keep `docs/` up to date when changing behavior, exit codes, or manifest format. Update the [API reference](api-reference.md) when changing public types or function signatures.
 

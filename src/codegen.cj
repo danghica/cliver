@@ -7,7 +7,6 @@
 package pkgcli
 
 import std.collection.ArrayList
-import std.collection.HashMap
 import std.core.StringBuilder
 
 // Generate full CLI driver source from manifest. Target package is the package being wrapped;
@@ -25,7 +24,6 @@ public func generateDriver(manifest: Manifest): String {
     sb.append(pkg)
     sb.append("\n\n")
     sb.append("import std.env.*\n")
-    sb.append("import std.io.*\n")
     sb.append("import std.collection.*\n")
     sb.append("import std.convert.*\n")
     sb.append("import std.core.StringBuilder\n\n")
@@ -63,12 +61,26 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("        id\n")
     sb.append("    }\n")
     sb.append("}\n\n")
-    sb.append("func _getRef(id: Int64): Option<Any> {\n")
-    sb.append("    if (_sessionState.isSome()) { _sessionState.getOrThrow().store.get(id) } else { _store.get(id) }\n")
-    sb.append("}\n\n")
-    sb.append("func _parseRefId(s: String): Option<Int64> {\n")
-    sb.append("    if (s.startsWith(\"ref:\")) { Int64.tryParse(s.removePrefix(\"ref:\")) } else { Option<Int64>.None }\n")
-    sb.append("}\n\n")
+    var hasRefParam: Bool = false
+    var ci: Int64 = 0
+    while (ci < manifest.commands.size) {
+        let cmd: CommandInfo = manifest.commands.get(ci).getOrThrow()
+        var pi: Int64 = 0
+        while (pi < cmd.params.size) {
+            let p: ParamInfo = cmd.params.get(pi).getOrThrow()
+            if (isRefType(p.paramType)) { hasRefParam = true }
+            pi++
+        }
+        ci++
+    }
+    if (hasRefParam) {
+        sb.append("func _getRef(id: Int64): Option<Any> {\n")
+        sb.append("    if (_sessionState.isSome()) { _sessionState.getOrThrow().store.get(id) } else { _store.get(id) }\n")
+        sb.append("}\n\n")
+        sb.append("func _parseRefId(s: String): Option<Int64> {\n")
+        sb.append("    if (s.startsWith(\"ref:\")) { Int64.tryParse(s.removePrefix(\"ref:\")) } else { Option<Int64>.None }\n")
+        sb.append("}\n\n")
+    }
     sb.append("// Split argv[1..] by \";\" so multiple commands in one run get ref:1, ref:2, ...\n")
     sb.append("func _splitArgsBySemicolon(allArgs: Array<String>): ArrayList<ArrayList<String>> {\n")
     sb.append("    let result: ArrayList<ArrayList<String>> = ArrayList<ArrayList<String>>()\n")
@@ -132,7 +144,7 @@ public func generateDriver(manifest: Manifest): String {
     var k: Int64 = 0
     while (k < keys.size) {
         let key: String = keys.get(k).getOrThrow()
-        let overloads: ArrayList<CommandInfo> = overloadsList.get(k).getOrThrow()
+        let _: ArrayList<CommandInfo> = overloadsList.get(k).getOrThrow()
         sb.append("        if (command == \"")
         sb.append(key)
         sb.append("\") {\n")
@@ -151,11 +163,15 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("    return 0\n")
     sb.append("}\n\n")
 
+    sb.append("// Stub: full implementation requires std.io.readLine() (not all Cangjie toolchains provide it).\n")
+    sb.append("func _serveStdin(): Int64 { return 0 }\n\n")
     sb.append("main(): Int64 {\n")
     sb.append("    let allArgs: Array<String> = getCommandLine()\n")
+    sb.append("    if (allArgs.size == 2 && allArgs[1] == \"--serve-stdin\") { return _serveStdin() }\n")
     sb.append("    if (allArgs.size < 2) {\n")
-    sb.append("        _err(\"Usage: <command> [args...]  Use 'help' for commands. Separate commands with ; for ref:1, ref:2, ...\")\n")
-    sb.append("        return 64\n")
+    sb.append("        _out(\"Usage: <command> [args...]  Separate commands with ; for ref:1, ref:2, ...\")\n")
+    sb.append("        _printHelp()\n")
+    sb.append("        return 0\n")
     sb.append("    }\n")
     sb.append("    let segments: ArrayList<ArrayList<String>> = _splitArgsBySemicolon(allArgs)\n")
     sb.append("    return _runSegments(segments)\n")
@@ -386,8 +402,9 @@ func _appendConvertedType(sb: StringBuilder, paramType: String): Unit {
 }
 
 func _emitCall(sb: StringBuilder, cmd: CommandInfo, isConstructor: Bool, n: Int64): Unit {
+    let needResult: Bool = cmd.returnIsRef || (cmd.returnType != "Unit")
     if (isConstructor) {
-        sb.append("let _result = ")
+        if (needResult) { sb.append("let _result = ") }
         sb.append(cmd.className)
         sb.append("(")
         var first: Bool = true
@@ -402,7 +419,7 @@ func _emitCall(sb: StringBuilder, cmd: CommandInfo, isConstructor: Bool, n: Int6
         }
         sb.append(")\n            ")
     } else {
-        sb.append("let _result = ")
+        if (needResult) { sb.append("let _result = ") }
         sb.append(cmd.name)
         sb.append("(")
         var first: Bool = true

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLI terminal</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+  <style>
+    body { margin: 0; background: #1e1e1e; padding: 8px; box-sizing: border-box; height: 100vh; }
+    #status { color: #888; font-family: sans-serif; font-size: 12px; margin-bottom: 4px; }
+    #terminal-container { width: 100%; height: calc(100% - 24px); }
+    .xterm { padding: 8px; }
+  </style>
+</head>
+<body>
+  <div id="status">Connecting to backend…</div>
+  <div id="terminal-container"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <script>
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var wsUrl = params.get('ws') || 'ws://localhost:8765';
+      var statusEl = document.getElementById('status');
+      var container = document.getElementById('terminal-container');
+
+      var term = new Terminal({ cursorBlink: true, theme: { background: '#1e1e1e' } });
+      var fitAddon = new FitAddon.FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(container);
+      fitAddon.fit();
+
+      var ws = null;
+      var connected = false;
+      var currentLine = '';
+
+      function setStatus(msg, isError) {
+        statusEl.textContent = msg;
+        statusEl.style.color = isError ? '#e06c75' : '#888';
+      }
+
+      function connect() {
+        setStatus('Connecting to ' + wsUrl + '…');
+        try {
+          ws = new WebSocket(wsUrl);
+          ws.onopen = function () {
+            connected = true;
+            setStatus('Connected. Type a command (e.g. Student new Alice 1001) or VAR = command for env vars.');
+            term.writeln('\r\nConnected. Type a command and press Enter (e.g. Student new Alice 1001). Use NAME = command to set env vars, $NAME to substitute.\r\n');
+            term.focus();
+          };
+          ws.onclose = function () {
+            connected = false;
+            setStatus('No backend at ' + wsUrl + '. Start it: node web/cli_ws_server.js (from package root).');
+            term.writeln('\r\n\x1b[33mNo backend.\x1b[0m From package root run: node web/cli_ws_server.js (requires: npm install ws)\r\nThen refresh. Or use CLI in shell: cjpm run --run-args=\"help\"\r\n');
+          };
+          ws.onerror = function () {
+            setStatus('No backend at ' + wsUrl + '. Start: node web/cli_ws_server.js (from package root).', true);
+          };
+          ws.onmessage = function (ev) {
+            var data = ev.data;
+            try {
+              var obj = JSON.parse(data);
+              if (obj.stdout) term.write(obj.stdout + '\r\n');
+              if (obj.stderr) term.write('\x1b[31m' + obj.stderr + '\x1b[0m\r\n');
+            } catch (_) {
+              term.write(data);
+            }
+          };
+        } catch (e) {
+          setStatus('Error: ' + e.message, true);
+        }
+      }
+
+      term.onData(function (data) {
+        if (data === '\r' || data === '\n') {
+          var text = currentLine.trim();
+          currentLine = '';
+          if (text && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ line: text }));
+            term.writeln('');
+          } else if (data === '\r') {
+            term.writeln('');
+          }
+          return;
+        }
+        if (data === '\x7f' || data === '\b') {
+          if (currentLine.length > 0) {
+            currentLine = currentLine.slice(0, -1);
+            term.write('\b \b');
+          }
+          return;
+        }
+        currentLine += data;
+        term.write(data);
+      });
+
+      connect();
+      term.focus();
+    })();
+  </script>
+</body>
+</html>

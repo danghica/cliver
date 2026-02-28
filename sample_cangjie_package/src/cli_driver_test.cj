@@ -27,7 +27,7 @@ func _runCliAndGetStdout(args: Array<String>): Option<String> {
     }
     let exePath: String = pathOpt.getOrThrow()
     try {
-        let (code, outBytes, _errBytes): (Int64, Array<Byte>, Array<Byte>) = executeWithOutput(exePath, args, stdOut: ProcessRedirect.Pipe, stdErr: ProcessRedirect.Pipe)
+        let (code, outBytes, _): (Int64, Array<Byte>, Array<Byte>) = executeWithOutput(exePath, args, stdOut: ProcessRedirect.Pipe, stdErr: ProcessRedirect.Pipe)
         if (code != 0) {
             return Option<String>.None
         }
