@@ -43,7 +43,7 @@ This script builds Clive, generates `sample_cangjie_package`’s driver, builds 
 
 Optional: `CANGJIE_ENVSETUP=/path/to/envsetup.sh` so `cjpm` is on `PATH`. To also smoke-test the WebSocket backend (e.g. cjpm on PATH when backend runs), use **`BACKEND_SMOKE=1`** (requires `npm install ws` in the sample package): `BACKEND_SMOKE=1 ./scripts/test_sample_package.sh`.
 
-**Note:** The generated driver uses a stub for `--serve-stdin` (browser terminal) when `std.io.readLine()` is not available in your Cangjie toolchain, so the driver always compiles; the browser terminal then exits immediately until the toolchain provides `readLine`. See [docs/browser-terminal-actors.md](docs/browser-terminal-actors.md).
+**Note:** The generated driver uses `getStdIn().readln()` in `_readLineStdin()` so the web terminal keeps one process per connection and refs persist across commands. See [docs/browser-terminal-actors.md](docs/browser-terminal-actors.md).
 
 ## Using the generated CLI
 
@@ -66,7 +66,7 @@ The target package may need `std.env`, `std.io`, `std.collection`, and `std.conv
 
 ## Web interface (browser terminal)
 
-You can run the generated CLI from an **interactive terminal in the browser**: type commands (e.g. `Student new Alice 1001`) and see output. Clive generates both the driver and a **minimal Node.js WebSocket backend** (`web/cli_ws_server.js`). You need **Node.js 18+** and **`npm install ws`** in the package to run the backend.
+You can run the generated CLI from an **interactive terminal in the browser**: type commands (e.g. `Student new Alice 1001`) and see output. Clive generates both the driver and a **minimal Node.js WebSocket backend** (`web/cli_ws_server.js`). You need **Node.js 18+** and **`npm install ws`** in the package to run the backend. For an **interactive** session (one line of input → command runs immediately → output appears), install **`node-pty`** as well (e.g. `npm install node-pty`). Without it, the backend still works but input may be buffered until the connection closes.
 
 ### Quick start
 
@@ -79,10 +79,10 @@ You can run the generated CLI from an **interactive terminal in the browser**: t
 2. **Start the backend** (from the package root, e.g. `sample_cangjie_package`). **`cjpm` must be on your PATH** in this terminal (e.g. run `source /path/to/cangjie/envsetup.sh` first), or set `CJPM_BIN` to the full path to the `cjpm` executable:
    ```bash
    cd sample_cangjie_package
-   npm install ws    # install the ws package (use npm, not node)
+   npm install ws node-pty   # ws required; node-pty for interactive (line-by-line) session
    node web/cli_ws_server.js
    ```
-   If you see **"spawn cjpm ENOENT"** in the browser, the backend cannot find `cjpm`; start the backend from a shell where Cangjie is on PATH, or run `CJPM_BIN=/path/to/cjpm node web/cli_ws_server.js`. You should see `WebSocket on ws://localhost:8765`.
+   If you see **"spawn cjpm ENOENT"** in the browser, the backend cannot find `cjpm`; start the backend from a shell where Cangjie is on PATH, or run `CJPM_BIN=/path/to/cjpm node web/cli_ws_server.js`. You should see `WebSocket on ws://localhost:8765`. To log connections and commands to a file, see [Debug mode and logs](#debug-mode-and-logs) below.
 
 3. **Serve the terminal page** (in another terminal). You must run this **from the sample package directory** (`sample_cangjie_package`), not from the Clive root:
    ```bash
@@ -91,7 +91,27 @@ You can run the generated CLI from an **interactive terminal in the browser**: t
    ```
    This serves the `web/` folder so the terminal is at the root URL. Alternatively, `npx serve .` from `sample_cangjie_package` serves the whole package; then open **`http://localhost:3000/web/`**.
 
-4. **Open in the browser**: `http://localhost:3000/` (or the URL shown by `serve`). Type a command (e.g. `Student new Alice 1001`) and press Enter. Use **`NAME = command`** to set an env var (stores the last ref), and **`$NAME`** in later commands to substitute. See [docs/browser-terminal-actors.md](docs/browser-terminal-actors.md) for details.
+4. **Open in the browser**: `http://localhost:3000/` (or the URL shown by `serve`). Type a command (e.g. `Student new Alice 1001`) and press Enter. Command output is shown in **grey**. Use **`NAME = command`** to set an env var (stores the last ref), and **`$NAME`** in later commands to substitute. Type **`exit`** to close the session. The backend keeps **one Cangjie process per connection** so the object store and ref IDs persist for the session; see [docs/browser-terminal-actors.md](docs/browser-terminal-actors.md) for details. If the session is **idle** (no input) for too long (default 1 minute), the message "session idle. exiting" is shown and the session closes; set **`IDLE_TIMEOUT_MS`** (e.g. `IDLE_TIMEOUT_MS=120000`) to change this, or `0` to disable.
+
+### Debug mode and logs
+
+The generated WebSocket backend (`web/cli_ws_server.js`) writes connection and command logs under the package’s **`web/`** directory so you can inspect activity without watching the console.
+
+- **Log location**: **`web/logs/cli_ws_server.log`**. The server creates the `web/logs/` directory automatically when the first log entry is written.
+- **Log format**: one JSON object per line (NDJSON). Every entry includes a **`ts`** timestamp (ISO 8601). Events logged:
+  - **`event: 'NEW CONNECTION'`** — new WebSocket connection.
+  - **`type: 'input', line`** — command line received from the client.
+  - **`type: 'output', stdout, stderr`** — response sent to the client.
+  - **`event: 'PTY_USED'`** / **`event: 'PTY_UNAVAILABLE'`** — whether a PTY was used for the Cangjie process.
+  - **`event: 'PROCESS_EXIT', code`** — long-lived process exited.
+  - **`event: 'SESSION_IDLE_CLOSE'`** — session was idle too long; backend sent "session idle. exiting" and closed the connection.
+- **Idle timeout**: if the session has no user input for **`IDLE_TIMEOUT_MS`** (default 60000 = 1 minute), the backend sends "session idle. exiting", then closes the connection. Set **`IDLE_TIMEOUT_MS=0`** to disable.
+- **Extra debug detail**: start the server with **`DEBUG_LOG=1`** to also log stdout/stderr chunk lengths:
+  ```bash
+  DEBUG_LOG=1 node web/cli_ws_server.js
+  ```
+
+To use a different port (e.g. 3001): **`PORT=3001 node web/cli_ws_server.js`** (and point the browser at the same port if you serve the page yourself).
 
 ## Exit codes
 
@@ -120,7 +140,7 @@ cjpm run --run-args="Student new Bob 2000"
 cjpm run --run-args="Lesson new"
 ```
 
-To serve the web terminal: from `sample_cangjie_package` run `npm install ws`, then `node web/cli_ws_server.js` (in one terminal) and `npx serve web` (in another, from `sample_cangjie_package`); open `http://localhost:3000/` in the browser. In the terminal you can type commands directly (e.g. `Student new Alice 1001`) and use `NAME = command` / `$NAME` for env vars.
+To serve the web terminal: from `sample_cangjie_package` run `npm install ws node-pty`, then `node web/cli_ws_server.js` (in one terminal) and `npx serve web` (in another, from `sample_cangjie_package`); open `http://localhost:3000/` in the browser. In the terminal you can type commands directly (e.g. `Student new Alice 1001`) and use `NAME = command` / `$NAME` for env vars. Logs are written to `web/logs/cli_ws_server.log`; use `DEBUG_LOG=1` for extra detail.
 
 ## File layout
 

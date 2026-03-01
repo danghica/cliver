@@ -55,3 +55,7 @@ BUILD=1 ./test_ref_output.sh   # build then test
 ./test_cli_usage.sh            # use existing build
 BUILD=1 ./test_cli_usage.sh    # build then test
 ```
+
+## Web terminal
+
+This package includes a browser terminal in `web/`. From the package root run `npm install ws node-pty`, then `node web/cli_ws_server.js` (backend) and `npx serve web` (frontend); open `http://localhost:3000/`. Type commands; output is shown in grey. Type **`exit`** to close the session. If the session is idle for 1 minute (or **`IDLE_TIMEOUT_MS`**), "session idle. exiting" is shown and the session closes. Logs go to `web/logs/cli_ws_server.log`; use `DEBUG_LOG=1` when starting the server for extra detail.

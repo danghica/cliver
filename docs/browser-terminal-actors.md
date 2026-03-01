@@ -5,7 +5,7 @@ This note describes how to use the generated CLI driver from a **browser termina
 ## Architecture
 
 - **Browser**: A terminal UI (e.g. [xterm.js](https://xtermjs.org/)) where users type CLI commands (e.g. `Student new Alice 1001`). Input is sent to a backend over WebSocket; stdout/stderr are displayed in the terminal.
-- **Backend (generated)**: Clive generates **`web/cli_ws_server.js`** (Node.js). It runs a WebSocket server; for each connection it spawns one Cangjie process with **`--serve-stdin`**, forwards each line to the process stdin, and sends JSON `{ stdout, stderr }` from the process stdout back to the client. The driver outputs one line per response (stdout and stderr separated by tab, newlines replaced by ` <NL> `) to avoid backslash/double-quote in Cangjie source. One process per connection = one session (store, nextId, env vars).
+- **Backend (generated)**: Clive generates **`web/cli_ws_server.js`** (Node.js). It runs a WebSocket server; for each connection it spawns **one** Cangjie process with **`--serve-stdin`**, forwards each command line to the process stdin, and sends JSON `{ stdout, stderr }` from the process stdout back to the client. The driver outputs one line per command (stdout and stderr separated by tab, newlines replaced by ` <NL> `). **One process per connection = one session**: the generated driver uses `getStdIn().readln()` so the process stays alive and the object store, ref IDs, and env vars persist for the lifetime of that connection. For **interactive** behavior (one line in → command runs immediately → output appears), the backend uses a **pseudo-terminal (PTY)** when the **`node-pty`** package is installed; without it, the backend falls back to pipes and input may be buffered until the connection closes. The user can type **`exit`** to close the session; if the session is **idle** (no input) for longer than **`IDLE_TIMEOUT_MS`** (default 1 minute), the backend sends "session idle. exiting" and closes the connection. There is no response-timeout fallback (if the process does not respond, the user sees no output or "Process exited.").
 - **Backend (optional, Cangjie actors)**: A Cangjie program using **distributed actors** can replace the Node backend: a gateway accepts WebSocket connections and assigns a session actor that holds the object store and calls **`runFromArgs(args, store, nextId)`** in-process.
 
 ## Clive’s role
@@ -15,8 +15,8 @@ Clive generates:
 1. **`src/cli_driver.cj`** — The CLI driver:
    - **`main()`** — Reads `getCommandLine()`. If the only argument is `--serve-stdin`, enters **stdin mode** (see below). Otherwise splits by `;`, runs commands, prints to stdout/stderr. Used when running the CLI as a process (`cjpm run --run-args="..."`).
    - **`runFromArgs(args, store, nextId): RunFromArgsResult`** — Public library entrypoint. Takes an array of argument strings, a session-owned store, and the current next ref id. Returns nextId, exitCode, stdout, stderr.
-   - **`--serve-stdin` mode** — When the driver is run with `--serve-stdin`, it should read lines from stdin and run each line (env assignment and `$VAR` substitution). On toolchains that do not provide `std.io.readLine()`, the generated driver uses a **stub** that returns immediately, so the driver always compiles; the browser terminal will not accept input until the toolchain provides `readLine`. When available, the driver prints one line per command (stdout and stderr separated by tab; newlines become ` <NL> `). The Node backend parses that and sends JSON `{ stdout, stderr }` to the client.
-2. **`web/cli_ws_server.js`** — A minimal Node.js WebSocket server (port 8765, or `PORT` env). Requires **Node.js 18+** and **`npm install ws`**. Run from the package root: `node web/cli_ws_server.js`.
+   - **`--serve-stdin` mode** — When the driver is run with `--serve-stdin`, it reads lines from stdin via **`_readLineStdin()`** (which calls `getStdIn().readln()`) and runs each line (env assignment and `$VAR` substitution), printing one line per command (stdout and stderr separated by tab; newlines become ` <NL> `). The Node backend parses that and sends JSON `{ stdout, stderr }` to the client. One process per connection gives a **single persistent session** (refs and env vars across commands). If the process exits right after connect (e.g. toolchain without std.env getStdIn/readln), the backend falls back to one process per command so the terminal still works but refs do not persist.
+2. **`web/cli_ws_server.js`** — A minimal Node.js WebSocket server (port 8765, or `PORT` env). Requires **Node.js 18+** and **`npm install ws`**. For an interactive terminal (line-by-line input and immediate output), also install **`node-pty`** (`npm install node-pty`). Run from the package root: `node web/cli_ws_server.js`.
 
 ### Web terminal environment variables
 
@@ -24,7 +24,8 @@ In the browser terminal (when using the generated backend), you can use:
 
 - **`NAME = command`** — Runs the command and stores the last ref printed (e.g. `ref:1`) in `NAME`. Example: `STU = Student new Alice 1001`.
 - **`$NAME`** — Substitution in a later command. Example: after `STU = Student new Alice 1001`, use `$STU` in a command that expects a ref. Unset names are replaced with an empty string.
-- **`exit`** or **`quit`** — Exits the stdin loop (backend closes the process when the WebSocket disconnects anyway).
+- **`exit`** — Special command: backend closes the session (kills the process, sends `sessionClosed`, closes the WebSocket). The terminal shows "Session closed."
+- **Idle timeout**: If there is no user input for **`IDLE_TIMEOUT_MS`** (default 60000 ms = 1 minute), the backend sends the message "session idle. exiting" and closes the session. Set **`IDLE_TIMEOUT_MS=0`** to disable. Command output in the terminal is shown in **grey**.
 
 ## Contract for the backend
 
@@ -56,7 +57,7 @@ From the **package root** (e.g. `sample_cangjie_package`):
 
 ```bash
 cd sample_cangjie_package
-npm install ws
+npm install ws node-pty   # node-pty for interactive (line-by-line) session
 node web/cli_ws_server.js
 ```
 
@@ -74,9 +75,10 @@ Open **`http://localhost:3000/`** (or the URL shown). If you get 404, ensure you
 
 ### 5. Use the terminal
 
-- **Streamlined syntax**: Type a command and press Enter (e.g. `Student new Alice 1001`). No `cjpm run --run-args="..."` in the browser.
+- **Streamlined syntax**: Type a command and press Enter (e.g. `Student new Alice 1001`). Command output is shown in **grey**. No `cjpm run --run-args="..."` in the browser.
 - **Env vars**: Type `NAME = command` to run the command and store the last ref in `NAME`. Use `$NAME` in later commands to substitute.
-- One browser tab = one WebSocket connection = one Cangjie process (one store, nextId, env). Closing the tab kills that process.
+- **Exit**: Type **`exit`** to close the session (backend kills the process and closes the WebSocket; terminal shows "Session closed.").
+- One browser tab = one WebSocket connection = one Cangjie process (one store, nextId, env). Closing the tab kills that process. If the session is idle for too long (default 1 minute), "session idle. exiting" is shown and the session closes.
 
 ### 6. Alternative: Cangjie backend (distributed actors)
 
@@ -89,5 +91,5 @@ You can replace the Node backend with a Cangjie program that:
 
 - **Browser UI**: xterm.js and the WebSocket client are provided in the sample package; the API contract is defined above.
 - **Distributed actors**: No change to the actors framework; the session actor is a consumer of `runFromArgs` and holds (store, nextId) per connection.
-- **Cangjie std.io readLine**: The driver's `--serve-stdin` mode uses `readLine()` from std.io to read lines from stdin. If your Cangjie environment does not provide it, the generated backend may not work until the API is available or you use a Cangjie-only backend that calls `runFromArgs` directly.
-- **Cangjie String API**: The generated driver uses `String.substring(start, end)`. If your toolchain reports that `substring` (or `slice`) is not a member of `String`, the standard library may use a different method name for slicing; you may need to align with the Cangjie version the driver was generated for.
+- **Cangjie stdin**: The driver's `--serve-stdin` mode uses `_readLineStdin()` implemented with `getStdIn().readln()` (std.env) so one process per connection keeps refs persistent. If your toolchain does not provide `getStdIn().readln()`, the backend falls back to one process per command. **Interactive session**: When `node-pty` is installed, the backend spawns the Cangjie process under a PTY so the process sees a TTY; `readln()` then returns line-by-line and output is line-buffered, so each command runs immediately. Without `node-pty`, the session may buffer input until the WebSocket closes.
+- **Cangjie String API**: The generated driver uses a helper `_substring(s, start, end)` (no `String.substring` dependency). No change needed for typical toolchains.

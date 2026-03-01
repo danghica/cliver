@@ -34,6 +34,7 @@
       var ws = null;
       var connected = false;
       var currentLine = '';
+      var closedBySession = false;
 
       function setStatus(msg, isError) {
         statusEl.textContent = msg;
@@ -52,8 +53,12 @@
           };
           ws.onclose = function () {
             connected = false;
-            setStatus('No backend at ' + wsUrl + '. Start it: node web/cli_ws_server.js (from package root).');
-            term.writeln('\r\n\x1b[33mNo backend.\x1b[0m From package root run: node web/cli_ws_server.js (requires: npm install ws)\r\nThen refresh. Or use CLI in shell: cjpm run --run-args=\"help\"\r\n');
+            if (closedBySession) {
+              setStatus('Session closed.');
+            } else {
+              setStatus('No backend at ' + wsUrl + '. Start it: node web/cli_ws_server.js (from package root).');
+              term.writeln('\r\n\x1b[33mNo backend.\x1b[0m From package root run: node web/cli_ws_server.js (requires: npm install ws)\r\nThen refresh. Or use CLI in shell: cjpm run --run-args=\"help\"\r\n');
+            }
           };
           ws.onerror = function () {
             setStatus('No backend at ' + wsUrl + '. Start: node web/cli_ws_server.js (from package root).', true);
@@ -62,8 +67,16 @@
             var data = ev.data;
             try {
               var obj = JSON.parse(data);
-              if (obj.stdout) term.write(obj.stdout + '\r\n');
-              if (obj.stderr) term.write('\x1b[31m' + obj.stderr + '\x1b[0m\r\n');
+              function crlf(s) { return (s && s.replace) ? s.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n') : s; }
+              if (obj.sessionClosed) {
+                if (obj.stdout) term.write('\x1b[90m' + crlf(obj.stdout) + '\x1b[0m\r\n');
+                setStatus('Session closed.');
+                closedBySession = true;
+                try { ws.close(); } catch (_) {}
+                return;
+              }
+              if (obj.stdout) term.write('\x1b[90m' + crlf(obj.stdout) + '\x1b[0m\r\n');
+              if (obj.stderr) term.write('\x1b[31m' + crlf(obj.stderr) + '\x1b[0m\r\n');
             } catch (_) {
               term.write(data);
             }

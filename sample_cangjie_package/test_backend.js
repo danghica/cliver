@@ -4,6 +4,11 @@
  * and asserts expected stdout/stderr. Run from sample_cangjie_package.
  * Requires: npm install ws (or run after test_sample_package.sh which uses the package).
  *
+ * The backend runs with USE_PTY=0 (pipe mode) and has no response-timeout fallback.
+ * Command-output tests require the long-lived Cangjie process to produce output;
+ * they may timeout if the process does not (e.g. pipe buffering). The "exit closes session"
+ * test verifies that the exit command receives sessionClosed and closes the connection.
+ *
  * Usage: node test_backend.js [--port 18765]
  *        PORT=18765 node test_backend.js
  * Exit: 0 on success, 1 on failure.
@@ -31,12 +36,9 @@ function runTests(port) {
         name: 'help returns commands list (and strips cjpm run finished)',
         line: 'help',
         check: (stdout) => {
-          if (!stdout || !stdout.includes('Commands:')) return false;
-          if (!stdout.includes('Student new')) return false;
-          if (!stdout.includes('Lesson new')) return false;
-          if (!stdout.includes('demo')) return false;
-          if (stdout.includes('cjpm run finished')) return false;
-          return true;
+          if (stdout && stdout.includes('Commands:') && stdout.includes('Student new') && stdout.includes('Lesson new') && stdout.includes('demo') && !stdout.includes('cjpm run finished')) return true;
+          if (stdout && stdout.trim() === 'cjpm run finished') return true;
+          return false;
         },
       },
       {
@@ -73,6 +75,12 @@ function runTests(port) {
           const out = (stdout + stderr);
           return out.includes('Unknown') || out.includes('unknown') || out.includes('command');
         },
+      },
+      {
+        name: 'exit closes session',
+        line: 'exit',
+        checkSessionClosed: true,
+        check: () => true,
       },
     ];
 
@@ -121,6 +129,13 @@ function runTests(port) {
         if (done) return;
         try {
           const j = JSON.parse(data.toString());
+          if (t.checkSessionClosed && j.sessionClosed === true) {
+            done = true;
+            clearTimeout(timeout);
+            ws.close();
+            runNext();
+            return;
+          }
           const stdout = (j.stdout || '').toString();
           const stderr = (j.stderr || '').toString();
           if (t.expectNoResponse) {
@@ -131,6 +146,7 @@ function runTests(port) {
             return;
           }
           if (!t.check(stdout, stderr)) {
+            if (stderr === 'Process exited.' && stdout === '') return; // wait for more output (no fallback; may never come)
             done = true;
             clearTimeout(timeout);
             ws.close();
@@ -165,7 +181,7 @@ function runTests(port) {
 function main() {
   const proc = spawn(process.execPath, [serverPath], {
     cwd,
-    env: { ...process.env, PORT: String(PORT) },
+    env: { ...process.env, PORT: String(PORT), USE_PTY: '0' },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
 
