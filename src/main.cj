@@ -53,10 +53,22 @@ func _backendScriptTemplate(): String {
         "  }\n" +
         "  function clearIdleTimer() { if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; } }\n" +
         "  startIdleTimer();\n" +
+        "  function normalizeWebLine(s) {\n" +
+        "    if (!s || typeof s !== 'string') return '';\n" +
+        "    var out = '';\n" +
+        "    for (var i = 0; i < s.length; i++) {\n" +
+        "      var c = s.charAt(i);\n" +
+        "      if (c.charCodeAt(0) === 10 || c.charCodeAt(0) === 13) out += ' ';\n" +
+        "      else if (c === ';') out += ' ; ';\n" +
+        "      else out += c;\n" +
+        "    }\n" +
+        "    return out.trim();\n" +
+        "  }\n" +
         "  ws.on('message', (data) => {\n" +
         "    try {\n" +
         "      const msg = JSON.parse(data.toString());\n" +
-        "      const line = msg.line != null ? String(msg.line).trim() : '';\n" +
+        "      let line = msg.line != null ? String(msg.line).trim() : '';\n" +
+        "      line = normalizeWebLine(line);\n" +
         "      if (line.length === 0) return;\n" +
         "      logEntry({ type: 'input', line: line });\n" +
         "      if (line === 'exit') {\n" +

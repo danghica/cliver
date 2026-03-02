@@ -43,10 +43,22 @@ wss.on('connection', (ws) => {
   }
   function clearIdleTimer() { if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; } }
   startIdleTimer();
+  function normalizeWebLine(s) {
+    if (!s || typeof s !== 'string') return '';
+    var out = '';
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charAt(i);
+      if (c.charCodeAt(0) === 10 || c.charCodeAt(0) === 13) out += ' ';
+      else if (c === ';') out += ' ; ';
+      else out += c;
+    }
+    return out.trim();
+  }
   ws.on('message', (data) => {
     try {
       const msg = JSON.parse(data.toString());
-      const line = msg.line != null ? String(msg.line).trim() : '';
+      let line = msg.line != null ? String(msg.line).trim() : '';
+      line = normalizeWebLine(line);
       if (line.length === 0) return;
       logEntry({ type: 'input', line: line });
       if (line === 'exit') {
