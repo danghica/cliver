@@ -40,6 +40,9 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("func _out(s: String): Unit {\n")
     sb.append("    if (_outBuf.isSome()) { _outBuf.getOrThrow().append(s); _outBuf.getOrThrow().append(\"\\n\") } else { println(s) }\n")
     sb.append("}\n\n")
+    sb.append("func _outNoNewline(s: String): Unit {\n")
+    sb.append("    if (_outBuf.isSome()) { _outBuf.getOrThrow().append(s) } else { print(s) }\n")
+    sb.append("}\n\n")
     sb.append("func _err(s: String): Unit {\n")
     sb.append("    if (_errBuf.isSome()) { _errBuf.getOrThrow().append(s); _errBuf.getOrThrow().append(\"\\n\") } else { eprintln(s) }\n")
     sb.append("}\n\n")
@@ -81,6 +84,21 @@ public func generateDriver(manifest: Manifest): String {
         sb.append("    if (s.startsWith(\"ref:\")) { Int64.tryParse(s.removePrefix(\"ref:\")) } else { Option<Int64>.None }\n")
         sb.append("}\n\n")
     }
+    sb.append("func _formatArgTypes(args: ArrayList<String>): String {\n")
+    sb.append("    let sb: StringBuilder = StringBuilder()\n")
+    sb.append("    sb.append(\"[\")\n")
+    sb.append("    var i: Int64 = 0\n")
+    sb.append("    while (i < args.size) {\n")
+    sb.append("        if (i > 0) { sb.append(\", \") }\n")
+    sb.append("        let a: String = args.get(i).getOrThrow()\n")
+    sb.append("        if (a.startsWith(\"ref:\") && Int64.tryParse(a.removePrefix(\"ref:\")).isSome()) { sb.append(\"ref\") }\n")
+    sb.append("        else if (Int64.tryParse(a).isSome()) { sb.append(\"Int64\") }\n")
+    sb.append("        else { sb.append(\"String\") }\n")
+    sb.append("        i++\n")
+    sb.append("    }\n")
+    sb.append("    sb.append(\"]\")\n")
+    sb.append("    sb.toString()\n")
+    sb.append("}\n\n")
     sb.append("// Split argv[1..] by \";\" so multiple commands in one run get ref:1, ref:2, ...\n")
     sb.append("func _splitArgsBySemicolon(allArgs: Array<String>): ArrayList<ArrayList<String>> {\n")
     sb.append("    let result: ArrayList<ArrayList<String>> = ArrayList<ArrayList<String>>()\n")
@@ -325,6 +343,9 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("                    }\n")
     sb.append("            }\n")
     sb.append("        }\n")
+    sb.append("        _outNoNewline(\"")
+    _appendPkgSanitized(sb, pkg)
+    sb.append(" session finished\")\n")
     sb.append("        let outStr: String = outBuf.toString()\n")
     sb.append("        let errStr: String = errBuf.toString()\n")
     sb.append("        _outBuf = Option<StringBuilder>.None\n")
@@ -374,6 +395,9 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("                    }\n")
     sb.append("            }\n")
     sb.append("        }\n")
+    sb.append("        _outNoNewline(\"")
+    _appendPkgSanitized(sb, pkg)
+    sb.append(" session finished\")\n")
     sb.append("        let outStr: String = outBuf.toString()\n")
     sb.append("        let errStr: String = errBuf.toString()\n")
     sb.append("        _outBuf = Option<StringBuilder>.None\n")
@@ -435,6 +459,9 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("                        }\n")
     sb.append("                }\n")
     sb.append("            }\n")
+    sb.append("            _outNoNewline(\"")
+    _appendPkgSanitized(sb, pkg)
+    sb.append(" session finished\")\n")
     sb.append("            let outStr: String = outBuf.toString()\n")
     sb.append("            let errStr: String = errBuf.toString()\n")
     sb.append("            _outBuf = Option<StringBuilder>.None\n")
@@ -490,6 +517,9 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("                }\n")
     sb.append("        }\n")
     sb.append("    }\n")
+    sb.append("    _outNoNewline(\"")
+    _appendPkgSanitized(sb, pkg)
+    sb.append(" session finished\")\n")
     sb.append("    let outStr: String = outBuf.toString()\n")
     sb.append("    let errStr: String = errBuf.toString()\n")
     sb.append("    _outBuf = Option<StringBuilder>.None\n")
@@ -528,24 +558,19 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("    RunFromArgsResult(newNextId, exitCode, outStr, errStr)\n")
     sb.append("}\n\n")
 
-    // Helper: print help from manifest
+    // Helper: print help from manifest (one _out per command, newline-separated; arg names in _underscores_ for italics; no "constructor")
     sb.append("func _printHelp(): Unit {\n")
     sb.append("    _out(\"Commands:\")\n")
-    sb.append("    _out(\"  echo [args...]  (built-in)\")\n")
+    sb.append("    _out(\"`echo` [args...]  (built-in)\")\n")
     k = 0
     while (k < keys.size) {
         let key: String = keys.get(k).getOrThrow()
         let overloads: ArrayList<CommandInfo> = overloadsList.get(k).getOrThrow()
         let cmd0: CommandInfo = overloads.get(0).getOrThrow()
-        if (cmd0.isConstructor) {
-            sb.append("    _out(\"  ")
-            sb.append(key)
-            sb.append(" new [args...]  (constructor)\")\n")
-        } else {
-            sb.append("    _out(\"  ")
-            sb.append(key)
-            sb.append(" [args...]\")\n")
-        }
+        let line: String = _buildHelpLine(key, cmd0)
+        sb.append("    _out(\"")
+        _appendEscapedForHelp(sb, line)
+        sb.append("\")\n")
         k++
     }
     sb.append("}\n\n")
@@ -560,6 +585,64 @@ public func generateDriver(manifest: Manifest): String {
     }
 
     sb.toString()
+}
+
+// Append package name without newlines (so generated source is one line)
+func _appendPkgSanitized(sb: StringBuilder, pkg: String): Unit {
+    var i: Int64 = 0
+    while (i < pkg.size) {
+        let c: Int64 = Int64(pkg.get(i).getOrThrow())
+        if (c != 10 && c != 13) { sb.append(Rune(UInt32(c))) }
+        i++
+    }
+}
+
+// Append string content escaped for use inside a Cangjie double-quoted string literal
+func _appendEscapedForHelp(sb: StringBuilder, s: String): Unit {
+    var i: Int64 = 0
+    while (i < s.size) {
+        let c: Byte = s.get(i).getOrThrow()
+        if (c == 34) { sb.append("\\"); sb.append(Rune(UInt32(34))) }
+        else if (c == 92) { sb.append("\\"); sb.append(Rune(UInt32(92))) }
+        else { sb.append(Rune(UInt32(c))) }
+        i++
+    }
+}
+
+// Build one help line: "`key` new _name_ _id_ where _name_ : `String`, _id_ : `Int64`" (backticks = monospace, underscores = italics)
+func _buildHelpLine(key: String, cmd: CommandInfo): String {
+    let lineSb: StringBuilder = StringBuilder()
+    lineSb.append("`")
+    lineSb.append(key)
+    lineSb.append("`")
+    if (cmd.isConstructor) {
+        lineSb.append(" new")
+    }
+    if (cmd.params.size > 0) {
+        var pi: Int64 = 0
+        while (pi < cmd.params.size) {
+            let p: ParamInfo = cmd.params.get(pi).getOrThrow()
+            lineSb.append(" _")
+            lineSb.append(p.paramName)
+            lineSb.append("_")
+            pi++
+        }
+        lineSb.append(" where")
+        var first: Bool = true
+        pi = 0
+        while (pi < cmd.params.size) {
+            let p: ParamInfo = cmd.params.get(pi).getOrThrow()
+            if (!first) { lineSb.append(",") }
+            lineSb.append(" _")
+            lineSb.append(p.paramName)
+            lineSb.append("_ : `")
+            lineSb.append(p.paramType)
+            lineSb.append("`")
+            first = false
+            pi++
+        }
+    }
+    lineSb.toString()
 }
 
 func _appendSafeName(sb: StringBuilder, name: String): Unit {
@@ -603,7 +686,9 @@ func _emitRunCommand(sb: StringBuilder, key: String, overloads: ArrayList<Comman
 
     sb.append("    _err(\"No matching overload for ")
     sb.append(key)
-    sb.append("\")\n")
+    sb.append(" with \" + _formatArgTypes(")
+    if (needNew) { sb.append("actualArgs") } else { sb.append("args") }
+    sb.append("))\n")
     sb.append("    return 64\n")
     sb.append("}\n\n")
 }

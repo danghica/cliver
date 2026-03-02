@@ -77,10 +77,10 @@ wss.on('connection', (ws) => {
       p.stderr.on('data', (c) => { err += c; });
       p.on('exit', () => {
         try {
-          const lastLine = out.split(/\\r?\\n/).filter(function (l) { return l.trim() !== 'cjpm run finished'; }).pop() || '';
-          const tab = lastLine.indexOf(String.fromCharCode(9));
-          const stdoutPart = tab >= 0 ? lastLine.substring(0, tab) : lastLine;
-          const stderrPart = tab >= 0 ? lastLine.substring(tab + 1) : '';
+          const outClean = out.replace(/\s*cjpm run finished\s*/gi, '').trim();
+          const tab = outClean.lastIndexOf(String.fromCharCode(9));
+          const stdoutPart = tab >= 0 ? outClean.substring(0, tab) : outClean;
+          const stderrPart = tab >= 0 ? outClean.substring(tab + 1) : '';
           const outStr = unescapeLine(stdoutPart);
           const errStr = (tab >= 0 ? unescapeLine(stderrPart) : err).trim();
           logEntry({ type: 'output', stdout: outStr, stderr: errStr });

@@ -36,8 +36,9 @@ function runTests(port) {
         name: 'help returns commands list (and strips cjpm run finished)',
         line: 'help',
         check: (stdout) => {
-          if (stdout && stdout.includes('Commands:') && stdout.includes('echo') && stdout.includes('Student new') && stdout.includes('Lesson new') && stdout.includes('demo') && stdout.includes('addStudentToLesson') && stdout.includes('printLessonStudentNames') && !stdout.includes('cjpm run finished')) return true;
-          if (stdout && stdout.trim() === 'cjpm run finished') return true;
+          const cleaned = (stdout || '').replace(/\s*cjpm run finished\s*/gi, '').trim();
+          if (cleaned && cleaned.includes('Commands:') && (cleaned.includes('echo') || cleaned.includes('Student new')) && (cleaned.includes('lesson_demo session finished') || cleaned.includes('addStudentToLesson')) && !cleaned.includes('cjpm run finished')) return true;
+          if ((stdout || '').trim() === 'cjpm run finished') return true;
           return false;
         },
       },

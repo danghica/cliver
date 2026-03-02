@@ -87,10 +87,10 @@ func _backendScriptTemplate(): String {
         "      p.stderr.on('data', (c) => { err += c; });\n" +
         "      p.on('exit', () => {\n" +
         "        try {\n" +
-        "          const lastLine = out.split(/\\\\r?\\\\n/).filter(function (l) { return l.trim() !== 'cjpm run finished'; }).pop() || '';\n" +
-        "          const tab = lastLine.indexOf(String.fromCharCode(9));\n" +
-        "          const stdoutPart = tab >= 0 ? lastLine.substring(0, tab) : lastLine;\n" +
-        "          const stderrPart = tab >= 0 ? lastLine.substring(tab + 1) : '';\n" +
+        "          const outClean = out.replace(/\\s*cjpm run finished\\s*/gi, '').trim();\n" +
+        "          const tab = outClean.lastIndexOf(String.fromCharCode(9));\n" +
+        "          const stdoutPart = tab >= 0 ? outClean.substring(0, tab) : outClean;\n" +
+        "          const stderrPart = tab >= 0 ? outClean.substring(tab + 1) : '';\n" +
         "          const outStr = unescapeLine(stdoutPart);\n" +
         "          const errStr = (tab >= 0 ? unescapeLine(stderrPart) : err).trim();\n" +
         "          logEntry({ type: 'output', stdout: outStr, stderr: errStr });\n" +

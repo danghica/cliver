@@ -68,6 +68,10 @@
       font-size: 13px;
       margin-bottom: 12px;
     }
+    #history .hint code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
     #input-area {
       flex-shrink: 0;
       padding: 12px;
@@ -261,7 +265,11 @@
               if (pendingHelpResponse) {
                 pendingHelpResponse = false;
                 var helpText = (obj.stdout || '').replace(/\s*cjpm run finished\s*/gi, '').trim();
-                if (helpText) helpHintEl.textContent = helpText;
+                if (helpText) {
+                  var escaped = escapeHtml(helpText).replace(/\n/g, '<br>');
+                  escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+                  helpHintEl.innerHTML = escaped.replace(/_([^_]+)_/g, '<em>$1</em>');
+                }
                 return;
               }
               if (obj.sessionClosed) {
@@ -275,7 +283,7 @@
             } catch (_) {
               if (pendingHelpResponse) {
                 pendingHelpResponse = false;
-                helpHintEl.textContent = 'Help not available.';
+                helpHintEl.innerHTML = 'Help not available.';
               } else {
                 ensureResponseBlock();
                 currentResponseEl.appendChild(document.createTextNode(data));
