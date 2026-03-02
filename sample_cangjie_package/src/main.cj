@@ -84,6 +84,19 @@ public class Lesson {
             i++
         }
     }
+
+    public func printStudentNames(): Unit {
+        var i: Int64 = 0
+        while (i < count) {
+            let s = students[i]
+            println(s.getName())
+            i++
+        }
+    }
+
+    public func getStudentCount(): Int64 {
+        count
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -106,4 +119,21 @@ public func demo(): Unit {
 
     println("=== After removing Bob (by reference) ===")
     lesson.printStudents()
+}
+
+// ---------------------------------------------------------------------------
+// Public functions for CLI: add student to lesson, print lesson student names
+// ---------------------------------------------------------------------------
+public func addStudentToLesson(student: Student, lesson: Lesson): Unit {
+    lesson.add(student)
+}
+
+public func printLessonStudentNames(lesson: Lesson): Unit {
+    println("=== Lesson student names ===")
+    lesson.printStudentNames()
+    println("=== End of lesson student names ===")
+}
+
+public func lessonStudentCount(lesson: Lesson): Int64 {
+    lesson.getStudentCount()
 }

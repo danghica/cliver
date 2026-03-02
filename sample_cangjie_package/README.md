@@ -10,6 +10,11 @@ Contains a **Student** class and a **Lesson** class that manages a collection of
   - `add(student: Student)` — add a student
   - `remove(student: Student): Bool` — remove by object reference (returns true if found and removed)
   - `printStudents()` — print each student's name and id
+  - `printStudentNames()` — print each student's name only (one per line)
+- **Public functions** (CLI: use `ref:<id>` for student/lesson refs):
+  - `addStudentToLesson(student: Student, lesson: Lesson)` — add a student to a lesson
+  - `printLessonStudentNames(lesson: Lesson)` — print the names of all students in the lesson
+  - `lessonStudentCount(lesson: Lesson): Int64` — return the number of students in the lesson (prints nothing; CLI shows the count)
 
 ## Build and run
 
@@ -58,4 +63,4 @@ BUILD=1 ./test_cli_usage.sh    # build then test
 
 ## Web CLI
 
-This package includes a **browser CLI** in `web/`: a chat-style UI (scrollable command/response history, text input at the bottom). From the package root run `npm install ws`, then `node web/cli_ws_server.js` (backend) and `npx serve web` (frontend); open `http://localhost:3000/`. Type commands; output is shown in grey. Each message runs in its own process (refs and env are local to that message). Use semicolons in one message for multiple commands (e.g. `Student new Alice 1001 ; Student new Bob 1002`). Within one message you can use multiple assignments and `$NAME` (e.g. `SN1 = Student new Alice 1001 ; EV = Lesson new ; Lesson new ; $EV`); the line is processed segment-by-segment so later segments see earlier refs. Semantics: run command, see response, env vars (`NAME = command`, `$NAME`), refs (`ref:1`, `ref:2`, …). Type **`exit`** to close the session. If the session is idle for 1 minute (or **`IDLE_TIMEOUT_MS`**), "session idle. exiting" is shown and the session closes. **Logs** are written to **`web/logs/cli_ws_server.log`**; use **`DEBUG_LOG=1 node web/cli_ws_server.js`** for extra debug detail (e.g. stdout/stderr chunk lengths).
+This package includes a **browser CLI** in `web/`: a chat-style UI (scrollable command/response history, text input at the bottom). From the package root run `npm install ws`, then `node web/cli_ws_server.js` (backend) and `npx serve web` (frontend); open `http://localhost:3000/`. Type commands; output is shown in grey. Each message runs in its own process (refs and env are local to that message). Use semicolons in one message for multiple commands (e.g. `Student new Alice 1001 ; Student new Bob 1002`). Within one message you can use multiple assignments and `$NAME` (e.g. `SN1 = Student new Alice 1001 ; EV = Lesson new ; Lesson new ; $EV`); the line is processed segment-by-segment so later segments see earlier refs. Semantics: run command, see response, env vars (`NAME = command`, `$NAME`), refs (`ref:1`, `ref:2`, …). Type **`exit`** to close the session. If the session is idle for 10 minutes (or **`IDLE_TIMEOUT_MS`**), "session idle. exiting" is shown and the session closes. **Logs** are written to **`web/logs/cli_ws_server.log`**; use **`DEBUG_LOG=1 node web/cli_ws_server.js`** for extra debug detail (e.g. stdout/stderr chunk lengths).

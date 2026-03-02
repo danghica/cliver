@@ -36,7 +36,7 @@ function runTests(port) {
         name: 'help returns commands list (and strips cjpm run finished)',
         line: 'help',
         check: (stdout) => {
-          if (stdout && stdout.includes('Commands:') && stdout.includes('echo') && stdout.includes('Student new') && stdout.includes('Lesson new') && stdout.includes('demo') && !stdout.includes('cjpm run finished')) return true;
+          if (stdout && stdout.includes('Commands:') && stdout.includes('echo') && stdout.includes('Student new') && stdout.includes('Lesson new') && stdout.includes('demo') && stdout.includes('addStudentToLesson') && stdout.includes('printLessonStudentNames') && !stdout.includes('cjpm run finished')) return true;
           if (stdout && stdout.trim() === 'cjpm run finished') return true;
           return false;
         },
@@ -92,6 +92,14 @@ function runTests(port) {
         check: (stdout, stderr) => {
           if (stderr && stderr.includes('Unknown command')) return false;
           return stdout && stdout.includes('ref:1') && stdout.includes('ref:2');
+        },
+      },
+      {
+        name: 'addStudentToLesson and printLessonStudentNames: add student to lesson, then print names',
+        line: 'S = Student new Alice 1001 ; L = Lesson new ; addStudentToLesson $S $L ; printLessonStudentNames $L',
+        check: (stdout, stderr) => {
+          if (stderr && stderr.includes('Unknown')) return false;
+          return stdout && stdout.includes('Alice') && !stdout.includes('1001');
         },
       },
       {

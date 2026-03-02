@@ -40,7 +40,7 @@ func _backendScriptTemplate(): String {
         "wss.on('connection', (ws) => {\n" +
         "  logEntry({ event: 'NEW CONNECTION' });\n" +
         "  let idleTimer = null;\n" +
-        "  const idleTimeoutMs = parseInt(process.env.IDLE_TIMEOUT_MS || '60000', 10);\n" +
+        "  const idleTimeoutMs = parseInt(process.env.IDLE_TIMEOUT_MS || '600000', 10);\n" +
         "  function startIdleTimer() {\n" +
         "    if (idleTimeoutMs <= 0) return;\n" +
         "    if (idleTimer) clearTimeout(idleTimer);\n" +

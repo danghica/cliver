@@ -30,7 +30,7 @@ const wss = new WebSocket.Server({ server });
 wss.on('connection', (ws) => {
   logEntry({ event: 'NEW CONNECTION' });
   let idleTimer = null;
-  const idleTimeoutMs = parseInt(process.env.IDLE_TIMEOUT_MS || '60000', 10);
+  const idleTimeoutMs = parseInt(process.env.IDLE_TIMEOUT_MS || '600000', 10);
   function startIdleTimer() {
     if (idleTimeoutMs <= 0) return;
     if (idleTimer) clearTimeout(idleTimer);

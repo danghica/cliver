@@ -111,4 +111,20 @@ class RunFromArgsTests {
         @Assert(r2.stdout.indexOf("ref:2").isSome())
         @Assert(r2.nextId == 3)
     }
+
+    @TestCase
+    func addStudentToLessonAndPrintLessonStudentNames() {
+        let store: HashMap<Int64, Any> = HashMap<Int64, Any>()
+        let r1: RunFromArgsResult = runFromArgs(["Student", "new", "Alice", "1001"], store, 1)
+        @Assert(r1.exitCode == 0)
+        @Assert(r1.stdout.indexOf("ref:1").isSome())
+        let r2: RunFromArgsResult = runFromArgs(["Lesson", "new"], store, r1.nextId)
+        @Assert(r2.exitCode == 0)
+        @Assert(r2.stdout.indexOf("ref:2").isSome())
+        let r3: RunFromArgsResult = runFromArgs(["addStudentToLesson", "ref:1", "ref:2"], store, r2.nextId)
+        @Assert(r3.exitCode == 0)
+        let r4: RunFromArgsResult = runFromArgs(["printLessonStudentNames", "ref:2"], store, r3.nextId)
+        @Assert(r4.exitCode == 0)
+        // printLessonStudentNames uses println(); runFromArgs only captures _out(), so we assert success only.
+    }
 }

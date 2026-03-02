@@ -82,14 +82,14 @@
     #input {
       flex: 1;
       min-height: 44px;
-      max-height: 120px;
+      min-width: 120px;
       padding: 10px 12px;
       background: #3c3c3c;
       border: 1px solid #3c3c3c;
       border-radius: 6px;
       color: #d4d4d4;
       font: inherit;
-      resize: none;
+      resize: both;
       outline: none;
     }
     #input:focus {
@@ -123,14 +123,14 @@
 <body>
   <div id="status">Connecting to backend…</div>
   <div id="history">
-    <div class="hint">Type a command below (e.g. Student new Alice 1001). Use NAME = command to set env vars, $NAME to substitute. Type exit to close the session.</div>
+    <div class="hint" id="help-hint">Loading help…</div>
   </div>
   <div id="input-area">
     <div id="input-row">
       <textarea id="input" rows="2" placeholder="Type a command…" aria-label="Command input"></textarea>
       <button id="send" type="button">Send</button>
     </div>
-    <div class="send-hint">Enter to send, Shift+Enter for new line.</div>
+    <div class="send-hint">Enter for new line, Shift+Enter to send.</div>
   </div>
 
   <script>
@@ -146,6 +146,8 @@
       var connected = false;
       var closedBySession = false;
       var currentResponseEl = null;
+      var pendingHelpResponse = false;
+      var helpHintEl = document.getElementById('help-hint');
 
       function setStatus(msg, isError) {
         statusEl.textContent = msg;
@@ -222,7 +224,7 @@
       sendBtn.addEventListener('click', function () { submitLine(); });
 
       inputEl.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key === 'Enter' && e.shiftKey) {
           e.preventDefault();
           submitLine();
         }
@@ -237,6 +239,8 @@
             setStatus('Connected. Type a command (e.g. Student new Alice 1001) or VAR = command for env vars.');
             sendBtn.disabled = false;
             inputEl.focus();
+            pendingHelpResponse = true;
+            ws.send(JSON.stringify({ line: 'help' }));
           };
           ws.onclose = function () {
             connected = false;
@@ -254,6 +258,12 @@
             var data = ev.data;
             try {
               var obj = JSON.parse(data);
+              if (pendingHelpResponse) {
+                pendingHelpResponse = false;
+                var helpText = (obj.stdout || '').replace(/\s*cjpm run finished\s*/gi, '').trim();
+                if (helpText) helpHintEl.textContent = helpText;
+                return;
+              }
               if (obj.sessionClosed) {
                 if (obj.stdout) appendToResponse(obj.stdout, '');
                 setStatus('Session closed.');
@@ -263,9 +273,14 @@
               }
               appendToResponse(obj.stdout || '', obj.stderr || '');
             } catch (_) {
-              ensureResponseBlock();
-              currentResponseEl.appendChild(document.createTextNode(data));
-              scrollToBottom();
+              if (pendingHelpResponse) {
+                pendingHelpResponse = false;
+                helpHintEl.textContent = 'Help not available.';
+              } else {
+                ensureResponseBlock();
+                currentResponseEl.appendChild(document.createTextNode(data));
+                scrollToBottom();
+              }
             }
           };
         } catch (e) {

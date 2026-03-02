@@ -109,7 +109,7 @@ Open **`http://localhost:3000/`** (or the URL shown). If you get 404, ensure you
 - **Chat-style UI**: Scrollable history; type in the text box at the bottom, press Enter or Send. Command output is shown in **grey**.
 - **Env vars**: **`NAME = command`** runs the command and stores the last ref in `NAME`. Use **`$NAME`** in later segments; within one message, multiple assignments and `$NAME` work (segment-by-segment).
 - **Exit**: Type **`exit`** to close the session (backend kills the process and closes the WebSocket; UI shows "Session closed.").
-- One tab = one WebSocket; each message spawns one Cangjie process (refs and env are local to that message). If the session is **idle** for longer than **`IDLE_TIMEOUT_MS`** (default 60000 ms = 1 minute), the backend sends "session idle. exiting" and closes; set **`IDLE_TIMEOUT_MS=0`** to disable.
+- One tab = one WebSocket; each message spawns one Cangjie process (refs and env are local to that message). If the session is **idle** for longer than **`IDLE_TIMEOUT_MS`** (default 600000 ms = 10 minutes), the backend sends "session idle. exiting" and closes; set **`IDLE_TIMEOUT_MS=0`** to disable.
 
 ### Debug mode and logs
 
