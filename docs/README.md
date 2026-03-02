@@ -12,7 +12,7 @@ This directory contains detailed documentation for users, contributors, and inte
 | [Architecture](architecture.md) | Design, pipeline, and component responsibilities |
 | [User guide](user-guide.md) | Build, run, environment, and using the generated CLI |
 | [Generated driver](generated-driver.md) | How the generated `cli_driver.cj` works (object store, overloads, arg conversion) |
-| [Browser terminal and actors](browser-terminal-actors.md) | Using the driver from a browser terminal with Cangjie distributed actors and `runFromArgs` |
+| [Browser CLI and actors](browser-terminal-actors.md) | Using the driver from the web CLI (chat-style UI) with Cangjie distributed actors and `runFromArgs` |
 | [API reference](api-reference.md) | Parser and codegen types and public APIs (Manifest, CommandInfo, etc.) |
 | [Limitations and future](limitations-and-future.md) | v1 limitations, known issues, and planned improvements |
 | [Development](development.md) | Contributing, file layout, cjpm, and testing |

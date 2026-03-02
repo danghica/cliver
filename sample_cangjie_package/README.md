@@ -56,6 +56,6 @@ BUILD=1 ./test_ref_output.sh   # build then test
 BUILD=1 ./test_cli_usage.sh    # build then test
 ```
 
-## Web terminal
+## Web CLI
 
-This package includes a browser terminal in `web/`. From the package root run `npm install ws node-pty`, then `node web/cli_ws_server.js` (backend) and `npx serve web` (frontend); open `http://localhost:3000/`. Type commands; output is shown in grey. Type **`exit`** to close the session. If the session is idle for 1 minute (or **`IDLE_TIMEOUT_MS`**), "session idle. exiting" is shown and the session closes. Logs go to `web/logs/cli_ws_server.log`; use `DEBUG_LOG=1` when starting the server for extra detail.
+This package includes a **browser CLI** in `web/`: a chat-style UI (scrollable command/response history, text input at the bottom). From the package root run `npm install ws`, then `node web/cli_ws_server.js` (backend) and `npx serve web` (frontend); open `http://localhost:3000/`. Type commands; output is shown in grey. Each message runs in its own process (refs and env are local to that message). Use semicolons in one message for multiple commands (e.g. `Student new Alice 1001 ; Student new Bob 1002`). Semantics: run command, see response, env vars (`NAME = command`, `$NAME`), refs (`ref:1`, `ref:2`, …). Type **`exit`** to close the session. If the session is idle for 1 minute (or **`IDLE_TIMEOUT_MS`**), "session idle. exiting" is shown and the session closes. **Logs** are written to **`web/logs/cli_ws_server.log`**; use **`DEBUG_LOG=1 node web/cli_ws_server.js`** for extra debug detail (e.g. stdout/stderr chunk lengths).

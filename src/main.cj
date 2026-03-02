@@ -14,7 +14,6 @@ func _backendScriptTemplate(): String {
         "const { spawn } = require('child_process');\n" +
         "const path = require('path');\n" +
         "const fs = require('fs');\n" +
-        "let pty = null; try { pty = require('node-pty'); } catch (_) {}\n" +
         "const PORT = parseInt(process.env.PORT || '8765', 10);\n" +
         "const cwd = path.join(__dirname, '..');\n" +
         "const cjpmBin = process.env.CJPM_BIN || 'cjpm';\n" +
@@ -40,32 +39,8 @@ func _backendScriptTemplate(): String {
         "const wss = new WebSocket.Server({ server });\n" +
         "wss.on('connection', (ws) => {\n" +
         "  logEntry({ event: 'NEW CONNECTION' });\n" +
-        "  let proc = null;\n" +
-        "  let procExited = false;\n" +
-        "  let usedPty = false;\n" +
-        "  let stdoutBuf = '';\n" +
-        "  let hadStdoutLine = false;\n" +
-        "  let pendingFirstLine = null;\n" +
         "  let idleTimer = null;\n" +
         "  const idleTimeoutMs = parseInt(process.env.IDLE_TIMEOUT_MS || '60000', 10);\n" +
-        "  function pushChunk(chunk) {\n" +
-        "    stdoutBuf += chunk;\n" +
-        "    if (DEBUG_LOG) debug({ stdoutChunk: chunk.length });\n" +
-        "    let idx;\n" +
-        "    while ((idx = stdoutBuf.indexOf(\"\\n\")) >= 0) {\n" +
-        "      hadStdoutLine = true;\n" +
-        "      const line = stdoutBuf.substring(0, idx);\n" +
-        "      stdoutBuf = stdoutBuf.substring(idx + 1);\n" +
-        "      const tab = line.indexOf(\"\\t\");\n" +
-        "      const stdoutPart = tab >= 0 ? line.substring(0, tab) : line;\n" +
-        "      const stderrPart = tab >= 0 ? line.substring(tab + 1) : '';\n" +
-        "      const outStr = unescapeLine(stdoutPart);\n" +
-        "      const errStr = unescapeLine(stderrPart);\n" +
-        "      logEntry({ type: 'output', stdout: outStr, stderr: errStr });\n" +
-        "      try { ws.send(JSON.stringify({ stdout: outStr, stderr: errStr })); } catch (_) {}\n" +
-        "      if (pendingFirstLine !== null) pendingFirstLine = null;\n" +
-        "    }\n" +
-        "  }\n" +
         "  function startIdleTimer() {\n" +
         "    if (idleTimeoutMs <= 0) return;\n" +
         "    if (idleTimer) clearTimeout(idleTimer);\n" +
@@ -73,38 +48,10 @@ func _backendScriptTemplate(): String {
         "      idleTimer = null;\n" +
         "      logEntry({ event: 'SESSION_IDLE_CLOSE' });\n" +
         "      try { ws.send(JSON.stringify({ stdout: 'session idle. exiting', sessionClosed: true })); } catch (_) {}\n" +
-        "      try { if (proc) { if (!usedPty && proc.stdin && proc.stdin.writable) proc.stdin.end(); proc.kill(); } } catch (_) {}\n" +
-        "      proc = null;\n" +
         "      try { ws.close(); } catch (_) {}\n" +
         "    }, idleTimeoutMs);\n" +
         "  }\n" +
         "  function clearIdleTimer() { if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; } }\n" +
-        "  function spawnServeStdin() {\n" +
-        "    if (pty && process.env.USE_PTY !== '0') {\n" +
-        "      usedPty = true;\n" +
-        "      logEntry({ event: 'PTY_USED' });\n" +
-        "      proc = pty.spawn(cjpmBin, ['run', '--run-args=--serve-stdin'], { cwd, name: 'xterm-256color', cols: 80, rows: 24, env: process.env });\n" +
-        "      proc.on('data', (chunk) => { pushChunk(chunk); });\n" +
-        "      proc.on('exit', (code) => {\n" +
-        "        procExited = true;\n" +
-        "        logEntry({ event: 'PROCESS_EXIT', code: code });\n" +
-        "        if (!hadStdoutLine) { try { ws.send(JSON.stringify({ stderr: 'Process exited.' })); } catch (_) {} }\n" +
-        "      });\n" +
-        "    } else {\n" +
-        "      logEntry({ event: 'PTY_UNAVAILABLE' });\n" +
-        "      proc = spawn(cjpmBin, ['run', '--run-args=--serve-stdin'], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });\n" +
-        "      proc.stdout.setEncoding('utf8');\n" +
-        "      proc.stderr.setEncoding('utf8');\n" +
-        "      proc.stdout.on('data', (chunk) => { pushChunk(chunk); });\n" +
-        "      proc.stderr.on('data', (chunk) => { if (DEBUG_LOG) debug({ stderrChunk: chunk.length }); });\n" +
-        "      proc.on('exit', (code) => {\n" +
-        "        procExited = true;\n" +
-        "        logEntry({ event: 'PROCESS_EXIT', code: code });\n" +
-        "        if (!hadStdoutLine) { try { ws.send(JSON.stringify({ stderr: 'Process exited.' })); } catch (_) {} }\n" +
-        "      });\n" +
-        "      proc.on('error', (e) => { try { ws.send(JSON.stringify({ stderr: e.message })); } catch (_) {} });\n" +
-        "    }\n" +
-        "  }\n" +
         "  startIdleTimer();\n" +
         "  ws.on('message', (data) => {\n" +
         "    try {\n" +
@@ -114,26 +61,36 @@ func _backendScriptTemplate(): String {
         "      logEntry({ type: 'input', line: line });\n" +
         "      if (line === 'exit') {\n" +
         "        clearIdleTimer();\n" +
-        "        try { if (proc) { if (!usedPty && proc.stdin && proc.stdin.writable) proc.stdin.end(); proc.kill(); } } catch (_) {}\n" +
-        "        proc = null;\n" +
         "        try { ws.send(JSON.stringify({ sessionClosed: true })); } catch (_) {}\n" +
         "        try { ws.close(); } catch (_) {}\n" +
         "        return;\n" +
         "      }\n" +
         "      startIdleTimer();\n" +
-        "      if (proc === null) {\n" +
-        "        spawnServeStdin();\n" +
-        "        pendingFirstLine = line;\n" +
-        "        if (usedPty) proc.write(line + \"\\n\"); else proc.stdin.write(line + \"\\n\");\n" +
-        "        return;\n" +
-        "      }\n" +
-        "      if (procExited) { try { ws.send(JSON.stringify({ stderr: 'Process exited.' })); } catch (_) {} return; }\n" +
-        "      if (usedPty) proc.write(line + \"\\n\"); else if (proc.stdin.writable) proc.stdin.write(line + \"\\n\");\n" +
+        "      const p = spawn(cjpmBin, ['run', '--run-args=' + line], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });\n" +
+        "      let out = '';\n" +
+        "      let err = '';\n" +
+        "      p.stdout.setEncoding('utf8');\n" +
+        "      p.stderr.setEncoding('utf8');\n" +
+        "      p.stdout.on('data', (c) => { out += c; });\n" +
+        "      p.stderr.on('data', (c) => { err += c; });\n" +
+        "      p.on('exit', () => {\n" +
+        "        try {\n" +
+        "          const lastLine = out.split(/\\\\r?\\\\n/).filter(function (l) { return l.trim() !== 'cjpm run finished'; }).pop() || '';\n" +
+        "          const tab = lastLine.indexOf(String.fromCharCode(9));\n" +
+        "          const stdoutPart = tab >= 0 ? lastLine.substring(0, tab) : lastLine;\n" +
+        "          const stderrPart = tab >= 0 ? lastLine.substring(tab + 1) : '';\n" +
+        "          const outStr = unescapeLine(stdoutPart);\n" +
+        "          const errStr = (tab >= 0 ? unescapeLine(stderrPart) : err).trim();\n" +
+        "          logEntry({ type: 'output', stdout: outStr, stderr: errStr });\n" +
+        "          ws.send(JSON.stringify({ stdout: outStr, stderr: errStr }));\n" +
+        "        } catch (_) {}\n" +
+        "      });\n" +
+        "      p.on('error', (e) => { try { ws.send(JSON.stringify({ stderr: e.message })); } catch (_) {} });\n" +
         "    } catch (_) {}\n" +
         "  });\n" +
-        "  ws.on('close', () => { clearIdleTimer(); try { if (proc && !usedPty && proc.stdin && proc.stdin.writable) proc.stdin.end(); if (proc) proc.kill(); } catch (_) {} });\n" +
+        "  ws.on('close', () => { clearIdleTimer(); });\n" +
         "});\n" +
-        "server.listen(PORT, () => console.log('WebSocket on ws://localhost:' + PORT));\n"
+        "server.listen(PORT, () => { logEntry({ event: 'SERVER_START' }); console.log('WebSocket on ws://localhost:' + PORT); });\n"
 }
 
 main(): Int64 {
