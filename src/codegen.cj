@@ -172,6 +172,17 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("            _printHelp()\n")
     sb.append("            continue\n")
     sb.append("        }\n")
+    sb.append("        if (command == \"echo\") {\n")
+    sb.append("            let sb: StringBuilder = StringBuilder()\n")
+    sb.append("            var ei: Int64 = 0\n")
+    sb.append("            while (ei < argsList.size) {\n")
+    sb.append("                if (ei > 0) { sb.append(\" \") }\n")
+    sb.append("                sb.append(argsList.get(ei).getOrThrow())\n")
+    sb.append("                ei++\n")
+    sb.append("            }\n")
+    sb.append("            _out(sb.toString())\n")
+    sb.append("            continue\n")
+    sb.append("        }\n")
 
     var k: Int64 = 0
     while (k < keys.size) {
@@ -520,6 +531,7 @@ public func generateDriver(manifest: Manifest): String {
     // Helper: print help from manifest
     sb.append("func _printHelp(): Unit {\n")
     sb.append("    _out(\"Commands:\")\n")
+    sb.append("    _out(\"  echo [args...]  (built-in)\")\n")
     k = 0
     while (k < keys.size) {
         let key: String = keys.get(k).getOrThrow()

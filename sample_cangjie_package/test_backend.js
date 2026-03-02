@@ -36,10 +36,20 @@ function runTests(port) {
         name: 'help returns commands list (and strips cjpm run finished)',
         line: 'help',
         check: (stdout) => {
-          if (stdout && stdout.includes('Commands:') && stdout.includes('Student new') && stdout.includes('Lesson new') && stdout.includes('demo') && !stdout.includes('cjpm run finished')) return true;
+          if (stdout && stdout.includes('Commands:') && stdout.includes('echo') && stdout.includes('Student new') && stdout.includes('Lesson new') && stdout.includes('demo') && !stdout.includes('cjpm run finished')) return true;
           if (stdout && stdout.trim() === 'cjpm run finished') return true;
           return false;
         },
+      },
+      {
+        name: 'echo ref:1 prints ref:1',
+        line: 'echo ref:1',
+        check: (stdout) => stdout && stdout.includes('ref:1') && !stdout.includes('Unknown'),
+      },
+      {
+        name: 'echo hello world prints hello world',
+        line: 'echo hello world',
+        check: (stdout) => stdout && stdout.includes('hello world') && !stdout.includes('Unknown'),
       },
       {
         name: 'Student new Alice 1001 returns ref:1',
