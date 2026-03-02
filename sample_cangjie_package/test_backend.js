@@ -77,6 +77,14 @@ function runTests(port) {
         },
       },
       {
+        name: 'segment-by-segment env: SN1 = Student new ... ; SN2 = Student new ... returns ref:1 and ref:2',
+        line: 'SN1 = Student new Alice 1001 ; SN2 = Student new Bob 1002',
+        check: (stdout, stderr) => {
+          if (stderr && stderr.includes('Unknown command')) return false;
+          return stdout && stdout.includes('ref:1') && stdout.includes('ref:2');
+        },
+      },
+      {
         name: 'exit closes session',
         line: 'exit',
         checkSessionClosed: true,

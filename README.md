@@ -60,13 +60,13 @@ Optional: `CANGJIE_ENVSETUP=/path/to/envsetup.sh` so `cjpm` is on `PATH`. To als
    cjpm run --run-args="Student new Alice 1001"
    cjpm run --run-args="Lesson new"
    ```
-   Each separate `cjpm run` starts a new process, so refs reset to `ref:1`. To get **ref:1**, **ref:2**, **ref:3** in one run, pass multiple commands separated by **`;`** (e.g. `cjpm run --run-args="Student new Alice 1001 ; Lesson new ; Lesson new"`). The driver prints those ref ids for future use (e.g. instance methods).
+   Each separate `cjpm run` starts a new process, so refs reset to `ref:1`. To get **ref:1**, **ref:2**, **ref:3** in one run, pass multiple commands separated by **`;`** (e.g. `cjpm run --run-args="Student new Alice 1001 ; Lesson new ; Lesson new"`). You can use **multiple** `NAME = command` and `$NAME` in the same line; the driver processes the line segment-by-segment so later segments see refs from earlier ones (e.g. `SN1 = Student new Alice 1001 ; EV = Lesson new ; Lesson new ; $EV`). The driver prints those ref ids for future use (e.g. instance methods).
 
 The target package may need `std.env`, `std.io`, `std.collection`, and `std.convert` in its `cjpm.toml` dependencies for the generated driver to compile.
 
 ## Web interface (browser CLI)
 
-You can run the generated CLI from a **browser UI**: a **chat-style** interface (scrollable command/response history, text input at the bottom). Clive generates **`src/cli_driver.cj`** and a **minimal Node.js WebSocket backend** **`web/cli_ws_server.js`**. You need **Node.js 18+** and **`npm install ws`**. The backend spawns **one process per message**; refs and env are local to that message. A single message can contain semicolon-separated commands (e.g. `Student new Alice 1001 ; Student new Bob 1002`). See [docs/browser-terminal-actors.md](docs/browser-terminal-actors.md) for architecture and the backend contract.
+You can run the generated CLI from a **browser UI**: a **chat-style** interface (scrollable command/response history, text input at the bottom). Clive generates **`src/cli_driver.cj`** and a **minimal Node.js WebSocket backend** **`web/cli_ws_server.js`**. You need **Node.js 18+** and **`npm install ws`**. The backend spawns **one process per message**; refs and env are local to that message. Within one message you can use multiple `NAME = command` and `$NAME` (segment-by-segment); a single message can contain semicolon-separated commands (e.g. `Student new Alice 1001 ; EV = Lesson new ; Lesson new ; $EV`). See [docs/browser-terminal-actors.md](docs/browser-terminal-actors.md) for architecture and the backend contract.
 
 ### 1. Generate the driver and backend
 
@@ -107,9 +107,9 @@ Open **`http://localhost:3000/`** (or the URL shown). If you get 404, ensure you
 ### 5. Use the web CLI
 
 - **Chat-style UI**: Scrollable history; type in the text box at the bottom, press Enter or Send. Command output is shown in **grey**.
-- **Env vars**: **`NAME = command`** runs the command and stores the last ref in `NAME`. Use **`$NAME`** in later commands to substitute.
+- **Env vars**: **`NAME = command`** runs the command and stores the last ref in `NAME`. Use **`$NAME`** in later segments; within one message, multiple assignments and `$NAME` work (segment-by-segment).
 - **Exit**: Type **`exit`** to close the session (backend kills the process and closes the WebSocket; UI shows "Session closed.").
-- One tab = one WebSocket = one Cangjie process when PTY works (one store, refs, env). If the session is **idle** for longer than **`IDLE_TIMEOUT_MS`** (default 60000 ms = 1 minute), the backend sends "session idle. exiting" and closes; set **`IDLE_TIMEOUT_MS=0`** to disable.
+- One tab = one WebSocket; each message spawns one Cangjie process (refs and env are local to that message). If the session is **idle** for longer than **`IDLE_TIMEOUT_MS`** (default 60000 ms = 1 minute), the backend sends "session idle. exiting" and closes; set **`IDLE_TIMEOUT_MS=0`** to disable.
 
 ### Debug mode and logs
 

@@ -68,7 +68,7 @@ wss.on('connection', (ws) => {
         return;
       }
       startIdleTimer();
-      const p = spawn(cjpmBin, ['run', '--run-args=' + line], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+      const p = spawn(cjpmBin, ['run', '--run-args', line], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
       let out = '';
       let err = '';
       p.stdout.setEncoding('utf8');

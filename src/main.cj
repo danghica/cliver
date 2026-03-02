@@ -78,7 +78,7 @@ func _backendScriptTemplate(): String {
         "        return;\n" +
         "      }\n" +
         "      startIdleTimer();\n" +
-        "      const p = spawn(cjpmBin, ['run', '--run-args=' + line], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });\n" +
+        "      const p = spawn(cjpmBin, ['run', '--run-args', line], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });\n" +
         "      let out = '';\n" +
         "      let err = '';\n" +
         "      p.stdout.setEncoding('utf8');\n" +
