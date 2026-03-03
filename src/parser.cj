@@ -19,22 +19,26 @@ public class Manifest {
     }
 }
 
-// One command: either a top-level function or a constructor (ClassName new args)
+// One command: top-level function, constructor (ClassName new args), or class method (instance or static)
 public class CommandInfo {
     public let name: String
     public let isConstructor: Bool
-    public let className: String  // if isConstructor, the class name
+    public let className: String  // if isConstructor or class method, the class name
     public let params: ArrayList<ParamInfo>
     public let returnType: String  // simple type name; "Unit" or class name etc.
     public let returnIsRef: Bool   // true if return type is a class (store in object store)
+    public let isInstanceMethod: Bool  // true for non-static instance methods (needs THIS)
+    public let isStaticMethod: Bool    // true for static methods (no THIS)
 
-    public init(name: String, isConstructor: Bool, className: String, params: ArrayList<ParamInfo>, returnType: String, returnIsRef: Bool) {
+    public init(name: String, isConstructor: Bool, className: String, params: ArrayList<ParamInfo>, returnType: String, returnIsRef: Bool, isInstanceMethod: Bool, isStaticMethod: Bool) {
         this.name = name
         this.isConstructor = isConstructor
         this.className = className
         this.params = params
         this.returnType = returnType
         this.returnIsRef = returnIsRef
+        this.isInstanceMethod = isInstanceMethod
+        this.isStaticMethod = isStaticMethod
     }
 }
 
@@ -72,6 +76,28 @@ func isPublic(decl: Decl): Bool {
     false
 }
 
+// Return true if decl has static modifier
+func isStatic(decl: Decl): Bool {
+    var i: Int64 = 0
+    while (i < decl.modifiers.size) {
+        let m: Modifier = decl.modifiers.get(i).getOrThrow()
+        if (m.keyword.value == "static") {
+            return true
+        }
+        i++
+    }
+    false
+}
+
+// Return true if name is an operator (e.g. ==, +); such methods are not exposed as CLI commands
+func isOperatorMethodName(name: String): Bool {
+    if (name.size < 1) { return true }
+    let first: Byte = name.get(0).getOrThrow()
+    let code: Int64 = Int64(first)
+    if ((code >= 97 && code <= 122) || (code >= 65 && code <= 90) || code == 95) { return false }
+    true
+}
+
 // Build package name string from PackageHeader (e.g. "a.b.c" or "lesson_demo")
 func packageNameFromHeader(header: PackageHeader): String {
     let raw: String = header.toTokens().toString()
@@ -104,13 +130,28 @@ func getParamList(fd: FuncDecl): ArrayList<ParamInfo> {
     list
 }
 
-// Collect one decl from class body: if public init, add to commands
+// Collect one decl from class body: public init, or public instance/static func
 func collectClassBodyDecl(className: String, decl: Decl, commands: ArrayList<CommandInfo>): Unit {
     match (decl) {
         case fd: FuncDecl =>
             if (fd.keyword.kind == TokenKind.INIT && isPublic(fd)) {
                 let params: ArrayList<ParamInfo> = getParamList(fd)
-                commands.add(all: [CommandInfo("init", true, className, params, className, true)])
+                commands.add(all: [CommandInfo("init", true, className, params, className, true, false, false)])
+            } else if (fd.keyword.kind == TokenKind.FUNC && isPublic(fd) && !isOperatorMethodName(fd.identifier.value)) {
+                let returnType: String = getReturnTypeStr(fd)
+                let methodParams: ArrayList<ParamInfo> = getParamList(fd)
+                if (isStatic(fd)) {
+                    commands.add(all: [CommandInfo(fd.identifier.value, false, className, methodParams, returnType, isRefType(returnType), false, true)])
+                } else {
+                    let paramsWithThis: ArrayList<ParamInfo> = ArrayList<ParamInfo>()
+                    paramsWithThis.add(all: [ParamInfo("this", className)])
+                    var mi: Int64 = 0
+                    while (mi < methodParams.size) {
+                        paramsWithThis.add(all: [methodParams.get(mi).getOrThrow()])
+                        mi++
+                    }
+                    commands.add(all: [CommandInfo(fd.identifier.value, false, className, paramsWithThis, returnType, isRefType(returnType), true, false)])
+                }
             }
         case _ => ()
     }
@@ -150,7 +191,7 @@ func collectTopLevelDecl(decl: Decl, commands: ArrayList<CommandInfo>): Unit {
             if (isPublic(fd) && fd.keyword.kind == TokenKind.FUNC) {
                 let params: ArrayList<ParamInfo> = getParamList(fd)
                 let returnType: String = getReturnTypeStr(fd)
-                commands.add(all: [CommandInfo(fd.identifier.value, false, "", params, returnType, isRefType(returnType))])
+                commands.add(all: [CommandInfo(fd.identifier.value, false, "", params, returnType, isRefType(returnType), false, false)])
             }
         case _ => ()
     }

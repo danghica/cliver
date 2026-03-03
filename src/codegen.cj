@@ -149,28 +149,53 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("    result\n")
     sb.append("}\n\n")
 
-    // Group commands by CLI key (class name for constructor, function name for function)
+    // Group commands by CLI key (class name for constructor, function name for function); class methods go to classMethod* lists
     let keys: ArrayList<String> = ArrayList<String>()
     let overloadsList: ArrayList<ArrayList<CommandInfo>> = ArrayList<ArrayList<CommandInfo>>()
+    let classMethodClassNames: ArrayList<String> = ArrayList<String>()
+    let classMethodNames: ArrayList<String> = ArrayList<String>()
+    let classMethodIsInstance: ArrayList<Bool> = ArrayList<Bool>()
+    let classMethodOverloadsList: ArrayList<ArrayList<CommandInfo>> = ArrayList<ArrayList<CommandInfo>>()
     var i: Int64 = 0
     while (i < manifest.commands.size) {
         let cmd: CommandInfo = manifest.commands.get(i).getOrThrow()
-        let key: String = if (cmd.isConstructor) { cmd.className } else { cmd.name }
-        var found: Bool = false
-        var j: Int64 = 0
-        while (j < keys.size) {
-            if (keys.get(j).getOrThrow() == key) {
-                overloadsList.get(j).getOrThrow().add(all: [cmd])
-                found = true
-                break
+        if (cmd.isInstanceMethod || cmd.isStaticMethod) {
+            var found: Bool = false
+            var j: Int64 = 0
+            while (j < classMethodClassNames.size) {
+                if (classMethodClassNames.get(j).getOrThrow() == cmd.className && classMethodNames.get(j).getOrThrow() == cmd.name) {
+                    classMethodOverloadsList.get(j).getOrThrow().add(all: [cmd])
+                    found = true
+                    break
+                }
+                j++
             }
-            j++
-        }
-        if (!found) {
-            keys.add(all: [key])
-            let list: ArrayList<CommandInfo> = ArrayList<CommandInfo>()
-            list.add(all: [cmd])
-            overloadsList.add(all: [list])
+            if (!found) {
+                classMethodClassNames.add(all: [cmd.className])
+                classMethodNames.add(all: [cmd.name])
+                classMethodIsInstance.add(all: [cmd.isInstanceMethod])
+                let list: ArrayList<CommandInfo> = ArrayList<CommandInfo>()
+                list.add(all: [cmd])
+                classMethodOverloadsList.add(all: [list])
+            }
+        } else {
+            let key: String = if (cmd.isConstructor) { cmd.className } else { cmd.name }
+            var found: Bool = false
+            var j: Int64 = 0
+            while (j < keys.size) {
+                if (keys.get(j).getOrThrow() == key) {
+                    overloadsList.get(j).getOrThrow().add(all: [cmd])
+                    found = true
+                    break
+                }
+                j++
+            }
+            if (!found) {
+                keys.add(all: [key])
+                let list: ArrayList<CommandInfo> = ArrayList<CommandInfo>()
+                list.add(all: [cmd])
+                overloadsList.add(all: [list])
+            }
         }
         i++
     }
@@ -201,6 +226,34 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("            _out(sb.toString())\n")
     sb.append("            continue\n")
     sb.append("        }\n")
+
+    var cmIdx: Int64 = 0
+    while (cmIdx < classMethodClassNames.size) {
+        let cmClass: String = classMethodClassNames.get(cmIdx).getOrThrow()
+        let cmMethod: String = classMethodNames.get(cmIdx).getOrThrow()
+        let cmInstance: Bool = classMethodIsInstance.get(cmIdx).getOrThrow()
+        sb.append("        if (command == \"")
+        sb.append(cmClass)
+        sb.append("\" && argsList.size >= 1 && argsList.get(0).getOrThrow() == \"")
+        sb.append(cmMethod)
+        sb.append("\") {\n")
+        if (cmInstance) {
+            sb.append("            var instArgs: ArrayList<String> = ArrayList<String>()\n")
+            sb.append("            var ia: Int64 = 1\n")
+            sb.append("            while (ia < argsList.size) { instArgs.add(all: [argsList.get(ia).getOrThrow()]); ia++ }\n")
+        } else {
+            sb.append("            var instArgs: ArrayList<String> = ArrayList<String>()\n")
+            sb.append("            var ia: Int64 = 2\n")
+            sb.append("            while (ia < argsList.size) { instArgs.add(all: [argsList.get(ia).getOrThrow()]); ia++ }\n")
+        }
+        sb.append("            let _code = _run")
+        _appendSafeName(sb, cmClass + "_" + cmMethod)
+        sb.append("(instArgs)\n")
+        sb.append("            if (_code != 0) { return _code }\n")
+        sb.append("            continue\n")
+        sb.append("        }\n")
+        cmIdx++
+    }
 
     var k: Int64 = 0
     while (k < keys.size) {
@@ -573,6 +626,19 @@ public func generateDriver(manifest: Manifest): String {
         sb.append("\")\n")
         k++
     }
+    cmIdx = 0
+    while (cmIdx < classMethodClassNames.size) {
+        let cmClass: String = classMethodClassNames.get(cmIdx).getOrThrow()
+        let cmMethod: String = classMethodNames.get(cmIdx).getOrThrow()
+        let cmOverloads: ArrayList<CommandInfo> = classMethodOverloadsList.get(cmIdx).getOrThrow()
+        let cmd0: CommandInfo = cmOverloads.get(0).getOrThrow()
+        let cmKey: String = cmClass + " " + cmMethod
+        let line: String = _buildHelpLine(cmKey, cmd0)
+        sb.append("    _out(\"")
+        _appendEscapedForHelp(sb, line)
+        sb.append("\")\n")
+        cmIdx++
+    }
     sb.append("}\n\n")
 
     // Emit _runKey for each key (tries overloads in order)
@@ -582,6 +648,15 @@ public func generateDriver(manifest: Manifest): String {
         let overloads: ArrayList<CommandInfo> = overloadsList.get(k).getOrThrow()
         _emitRunCommand(sb, key, overloads)
         k++
+    }
+    // Emit _runClassName_methodName for each class method
+    cmIdx = 0
+    while (cmIdx < classMethodClassNames.size) {
+        let cmClass: String = classMethodClassNames.get(cmIdx).getOrThrow()
+        let cmMethod: String = classMethodNames.get(cmIdx).getOrThrow()
+        let cmOverloads: ArrayList<CommandInfo> = classMethodOverloadsList.get(cmIdx).getOrThrow()
+        _emitRunCommand(sb, cmClass + "_" + cmMethod, cmOverloads)
+        cmIdx++
     }
 
     sb.toString()
@@ -617,6 +692,9 @@ func _buildHelpLine(key: String, cmd: CommandInfo): String {
     lineSb.append("`")
     if (cmd.isConstructor) {
         lineSb.append(" new")
+    }
+    if (cmd.isInstanceMethod || cmd.isStaticMethod) {
+        // no " new" for class methods
     }
     if (cmd.params.size > 0) {
         var pi: Int64 = 0
@@ -813,6 +891,41 @@ func _emitCall(sb: StringBuilder, cmd: CommandInfo, isConstructor: Bool, n: Int6
     if (isConstructor) {
         if (needResult) { sb.append("let _result = ") }
         sb.append(cmd.className)
+        sb.append("(")
+        var first: Bool = true
+        var pi: Int64 = 0
+        while (pi < n) {
+            if (!first) { sb.append(", ") }
+            sb.append("_v")
+            sb.append(pi.toString())
+            sb.append(".getOrThrow()")
+            first = false
+            pi++
+        }
+        sb.append(")\n            ")
+    } else if (cmd.isInstanceMethod) {
+        if (needResult) { sb.append("let _result = ") }
+        sb.append("((_v0.getOrThrow() as ")
+        sb.append(cmd.className)
+        sb.append(").getOrThrow()).")
+        sb.append(cmd.name)
+        sb.append("(")
+        var first: Bool = true
+        var pi: Int64 = 1
+        while (pi < n) {
+            if (!first) { sb.append(", ") }
+            sb.append("_v")
+            sb.append(pi.toString())
+            sb.append(".getOrThrow()")
+            first = false
+            pi++
+        }
+        sb.append(")\n            ")
+    } else if (cmd.isStaticMethod) {
+        if (needResult) { sb.append("let _result = ") }
+        sb.append(cmd.className)
+        sb.append(".")
+        sb.append(cmd.name)
         sb.append("(")
         var first: Bool = true
         var pi: Int64 = 0
