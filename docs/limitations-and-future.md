@@ -8,13 +8,13 @@ This document summarizes the current limitations of Clive (v1) and possible futu
 
 - **Only top-level public functions** and **public constructors** are exposed. Instance methods (e.g. `lesson.add(student)`) and static methods are **not** exposed in the first version.
 - **Generic functions** are not supported; the parser and codegen assume concrete types.
-- **One package**: Clive operates on a single Cangjie package at a time. Multi-package projects would require running Clive per package or extending the design.
+- **One package path in**: Clive operates on a single package path; that package may contain nested directories and multiple Cangjie package declarations (root + subpackages). Commands are associated with a CLI directory (packagePath); the generated CLI supports path-based invocation and `cd`.
 
 ### Parser
 
 - **Line-based and pattern-based**: The parser scans lines for `package`, `public func`, `public class`, and `public init`. It does not build a full Cangjie AST.
 - **Complex signatures**: Multiline function/init declarations, heavy use of generics, or unusual formatting may not be parsed correctly and may require manual adjustment of the source or the parser.
-- **Single package name**: The first `package` declaration found is used; multiple or conditional package declarations are not handled specially.
+- **Package name**: The first `package` declaration from a file at root (directly under the scan directory) is used for `packageQualifiedName`; files in subdirectories may declare different (sub)packages and are still processed.
 
 ### CLI and arguments
 
@@ -46,6 +46,7 @@ This document summarizes the current limitations of Clive (v1) and possible futu
 - **Richer parser**: Use or integrate a proper Cangjie front-end (if available) for robust handling of multiline and generic signatures.
 - **Overload resolution**: Define a deterministic “most specific” ordering (e.g. by parameter type specificity) or at least document manifest order clearly and allow user control (e.g. ordering in a config file).
 - **Persistence**: Optional persistence of the object store (e.g. to a file or session id) so refs can be reused across invocations (with clear lifecycle and security considerations).
+- **Package scope**: CLI directory design with path-based resolution is implemented. Optional path-based validation (e.g. consistency between file `package` declaration and directory-derived path) can be added later.
 - **Multiple packages**: Support generating one CLI that aggregates several packages, or one driver per package with a single entry script.
 - **Help**: Per-command help (e.g. `help Student`) showing parameter names and types, and document env vars if/when supported.
 - **Config / templates**: Allow users to exclude certain functions or classes, or to customize command names, via a config file or template.

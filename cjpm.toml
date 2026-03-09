@@ -8,4 +8,5 @@ output-type = "executable"
 [dependencies]
 
 [target.darwin_aarch64_cjnative.bin-dependencies]
-path-option = ["/Users/danghica/cangjie/modules/darwin_aarch64_cjnative"]
+# Default to sandbox cjc-eh path; override by editing or using a cjpm config that sets path-option
+path-option = ["/Users/danghica/sandbox/cjceh/cjc-eh/cangjie/modules/darwin_aarch64_cjnative"]

@@ -35,13 +35,21 @@ Run the standard test suite **before deployment** to avoid runtime errors: it ge
 ./scripts/build_and_test.sh
 ```
 
-This script builds Clive, generates `sample_cangjie_package`’s driver, builds the sample package, runs `cjpm test` there, then runs `test_ref_output.sh`, `test_cli_usage.sh`, and the WebSocket backend tests (`test_backend.js`). Backend tests require Node.js, `npm install ws`, and `cjpm` on PATH; use `SKIP_BACKEND_TESTS=1` to skip them. To run only the sample-package test (Clive already built):
+This script builds Clive, generates `sample_cangjie_package`’s driver, builds the sample package, runs `cjpm test` there, then runs `test_ref_output.sh`, `test_cli_usage.sh`, `test_nested_package.sh`, and the WebSocket backend tests (`test_backend.js`). Backend tests require Node.js, `npm install ws`, and `cjpm` on PATH; use `SKIP_BACKEND_TESTS=1` to skip them. To run only the sample-package test (Clive already built):
 
 ```bash
 ./scripts/test_sample_package.sh
 ```
 
-Optional: `CANGJIE_ENVSETUP=/path/to/envsetup.sh` so `cjpm` is on `PATH`. To also smoke-test the WebSocket backend (e.g. cjpm on PATH when backend runs), use **`BACKEND_SMOKE=1`** (requires `npm install ws` in the sample package): `BACKEND_SMOKE=1 ./scripts/test_sample_package.sh`.
+**Using Cangjie envsetup:** To use the Cangjie toolchain from a specific install (e.g. cjc-eh), source its `envsetup.sh` and run the build and tests. A convenience script does that for you; by default it uses `/Users/danghica/sandbox/cjceh/cjc-eh/cangjie/envsetup.sh`:
+
+```bash
+./scripts/build_and_test_with_envsetup.sh
+```
+
+To use a different envsetup: `CANGJIE_ENVSETUP=/path/to/cangjie/envsetup.sh ./scripts/build_and_test_with_envsetup.sh`
+
+Optional: put `cjc` and `cjpm` on `PATH` (e.g. add both `cangjie/bin` and `cangjie/tools/bin` so `cjpm` can run `cjc`). Or set `CANGJIE_ENVSETUP=/path/to/envsetup.sh` or `CANGJIE_HOME=/path/to/cangjie` and run `./scripts/run_tests_with_env.sh` (which adds `CANGJIE_HOME/bin` and `CANGJIE_HOME/tools/bin` to `PATH`). To also smoke-test the WebSocket backend (e.g. cjpm on PATH when backend runs), use **`BACKEND_SMOKE=1`** (requires `npm install ws` in the sample package): `BACKEND_SMOKE=1 ./scripts/test_sample_package.sh`.
 
 **Note:** The web backend runs one process per message (refs and env are session-local to each message). See [docs/browser-terminal-actors.md](docs/browser-terminal-actors.md).
 

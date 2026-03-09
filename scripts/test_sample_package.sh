@@ -39,6 +39,9 @@ echo "=== Running shell tests (ref output) ==="
 echo "=== Running shell tests (CLI usage) ==="
 ./test_cli_usage.sh
 
+echo "=== Running shell tests (nested package) ==="
+./test_nested_package.sh
+
 echo "=== Running backend tests (WebSocket) ==="
 if [ "${SKIP_BACKEND_TESTS:-0}" = "1" ]; then
   echo "Skipping backend tests (SKIP_BACKEND_TESTS=1)"

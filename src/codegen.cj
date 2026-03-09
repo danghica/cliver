@@ -50,6 +50,7 @@ public func generateDriver(manifest: Manifest): String {
     // Object store and helpers (use session state when set, else global)
     sb.append("var _nextId: Int64 = 1\n")
     sb.append("var _store: HashMap<Int64, Any> = HashMap<Int64, Any>()\n\n")
+    sb.append("var _cwd: String = \"/\"\n\n")
     sb.append("func _storeRef(obj: Any): Int64 {\n")
     sb.append("    if (_sessionState.isSome()) {\n")
     sb.append("        let st = _sessionState.getOrThrow()\n")
@@ -149,9 +150,11 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("    result\n")
     sb.append("}\n\n")
 
-    // Group commands by CLI key (class name for constructor, function name for function); class methods go to classMethod* lists
+    // Group commands by (packagePath, CLI key); class methods by (packagePath, className, methodName)
+    let commandPackagePaths: ArrayList<String> = ArrayList<String>()
     let keys: ArrayList<String> = ArrayList<String>()
     let overloadsList: ArrayList<ArrayList<CommandInfo>> = ArrayList<ArrayList<CommandInfo>>()
+    let cmPackagePaths: ArrayList<String> = ArrayList<String>()
     let classMethodClassNames: ArrayList<String> = ArrayList<String>()
     let classMethodNames: ArrayList<String> = ArrayList<String>()
     let classMethodIsInstance: ArrayList<Bool> = ArrayList<Bool>()
@@ -163,7 +166,7 @@ public func generateDriver(manifest: Manifest): String {
             var found: Bool = false
             var j: Int64 = 0
             while (j < classMethodClassNames.size) {
-                if (classMethodClassNames.get(j).getOrThrow() == cmd.className && classMethodNames.get(j).getOrThrow() == cmd.name) {
+                if (cmPackagePaths.get(j).getOrThrow() == cmd.packagePath && classMethodClassNames.get(j).getOrThrow() == cmd.className && classMethodNames.get(j).getOrThrow() == cmd.name) {
                     classMethodOverloadsList.get(j).getOrThrow().add(all: [cmd])
                     found = true
                     break
@@ -171,6 +174,7 @@ public func generateDriver(manifest: Manifest): String {
                 j++
             }
             if (!found) {
+                cmPackagePaths.add(all: [cmd.packagePath])
                 classMethodClassNames.add(all: [cmd.className])
                 classMethodNames.add(all: [cmd.name])
                 classMethodIsInstance.add(all: [cmd.isInstanceMethod])
@@ -183,7 +187,7 @@ public func generateDriver(manifest: Manifest): String {
             var found: Bool = false
             var j: Int64 = 0
             while (j < keys.size) {
-                if (keys.get(j).getOrThrow() == key) {
+                if (commandPackagePaths.get(j).getOrThrow() == cmd.packagePath && keys.get(j).getOrThrow() == key) {
                     overloadsList.get(j).getOrThrow().add(all: [cmd])
                     found = true
                     break
@@ -191,6 +195,7 @@ public func generateDriver(manifest: Manifest): String {
                 j++
             }
             if (!found) {
+                commandPackagePaths.add(all: [cmd.packagePath])
                 keys.add(all: [key])
                 let list: ArrayList<CommandInfo> = ArrayList<CommandInfo>()
                 list.add(all: [cmd])
@@ -200,6 +205,9 @@ public func generateDriver(manifest: Manifest): String {
         i++
     }
 
+    let knownPaths: ArrayList<String> = _buildKnownPaths(manifest)
+    _emitPathHelpers(sb, knownPaths)
+
     // _runSegments(segments): run each segment, return first non-zero exit code or 0
     sb.append("func _runSegments(segments: ArrayList<ArrayList<String>>): Int64 {\n")
     sb.append("    var segIdx: Int64 = 0\n")
@@ -207,10 +215,34 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("        let seg: ArrayList<String> = segments.get(segIdx).getOrThrow()\n")
     sb.append("        segIdx++\n")
     sb.append("        if (seg.size < 1) { continue }\n")
-    sb.append("        let command: String = seg.get(0).getOrThrow()\n")
+    sb.append("        let firstToken: String = seg.get(0).getOrThrow()\n")
     sb.append("        var argsList: ArrayList<String> = ArrayList<String>()\n")
     sb.append("        var ai: Int64 = 1\n")
     sb.append("        while (ai < seg.size) { argsList.add(all: [seg.get(ai).getOrThrow()]); ai++ }\n")
+    sb.append("        var resolvedDir: String = _cwd\n")
+    sb.append("        var command: String = firstToken\n")
+    sb.append("        var slashIdx: Int64 = firstToken.size - 1\n")
+    sb.append("        while (slashIdx >= 0 && Int64(firstToken.get(slashIdx).getOrThrow()) != 47) { slashIdx-- }\n")
+    sb.append("        if (slashIdx >= 0) {\n")
+    sb.append("            let dirPart: String = _substring(firstToken, 0, slashIdx)\n")
+    sb.append("            let commandPart: String = _substring(firstToken, slashIdx + 1, firstToken.size)\n")
+    sb.append("            if (commandPart.size > 0) {\n")
+    sb.append("                match (_normalizePath(dirPart, _cwd)) {\n")
+    sb.append("                    case Option<String>.None => _err(\"Invalid path\"); return 64\n")
+    sb.append("                    case Option<String>.Some(rd) => resolvedDir = rd; command = commandPart\n")
+    sb.append("                }\n")
+    sb.append("            }\n")
+    sb.append("        }\n")
+    sb.append("        if (command == \"cd\") {\n")
+    sb.append("            if (argsList.size < 1) { _err(\"Usage: cd <path>\"); return 64 }\n")
+    sb.append("            match (_normalizePath(argsList.get(0).getOrThrow(), _cwd)) {\n")
+    sb.append("                case Option<String>.None => _err(\"Invalid path\"); return 64\n")
+    sb.append("                case Option<String>.Some(np) =>\n")
+    sb.append("                    if (!_isKnownPath(np)) { _err(\"No such directory: \" + np); return 64 }\n")
+    sb.append("                    _cwd = np\n")
+    sb.append("            }\n")
+    sb.append("            continue\n")
+    sb.append("        }\n")
     sb.append("        if (command == \"help\") {\n")
     sb.append("            _printHelp()\n")
     sb.append("            continue\n")
@@ -229,10 +261,13 @@ public func generateDriver(manifest: Manifest): String {
 
     var cmIdx: Int64 = 0
     while (cmIdx < classMethodClassNames.size) {
+        let cmPkg: String = cmPackagePaths.get(cmIdx).getOrThrow()
         let cmClass: String = classMethodClassNames.get(cmIdx).getOrThrow()
         let cmMethod: String = classMethodNames.get(cmIdx).getOrThrow()
         let cmInstance: Bool = classMethodIsInstance.get(cmIdx).getOrThrow()
-        sb.append("        if (command == \"")
+        sb.append("        if (resolvedDir == \"")
+        _appendEscapedForHelp(sb, cmPkg)
+        sb.append("\" && command == \"")
         sb.append(cmClass)
         sb.append("\" && argsList.size >= 1 && argsList.get(0).getOrThrow() == \"")
         sb.append(cmMethod)
@@ -257,9 +292,12 @@ public func generateDriver(manifest: Manifest): String {
 
     var k: Int64 = 0
     while (k < keys.size) {
+        let pkgPath: String = commandPackagePaths.get(k).getOrThrow()
         let key: String = keys.get(k).getOrThrow()
         let _: ArrayList<CommandInfo> = overloadsList.get(k).getOrThrow()
-        sb.append("        if (command == \"")
+        sb.append("        if (resolvedDir == \"")
+        _appendEscapedForHelp(sb, pkgPath)
+        sb.append("\" && command == \"")
         sb.append(key)
         sb.append("\") {\n")
         sb.append("            let _code = _run")
@@ -271,21 +309,12 @@ public func generateDriver(manifest: Manifest): String {
         k++
     }
 
-    sb.append("        _err(\"Unknown command: \" + command)\n")
+    sb.append("        _err(\"Unknown command: \" + command + \" (in \" + resolvedDir + \")\")\n")
     sb.append("        return 64\n")
     sb.append("    }\n")
     sb.append("    return 0\n")
     sb.append("}\n\n")
 
-    sb.append("func _substring(s: String, start: Int64, end: Int64): String {\n")
-    sb.append("    let sb: StringBuilder = StringBuilder()\n")
-    sb.append("    var i: Int64 = start\n")
-    sb.append("    while (i < end && i < s.size) {\n")
-    sb.append("        sb.append(Rune(UInt32(s.get(i).getOrThrow())))\n")
-    sb.append("        i++\n")
-    sb.append("    }\n")
-    sb.append("    sb.toString()\n")
-    sb.append("}\n\n")
     sb.append("func _escapeNewlines(s: String): String {\n")
     sb.append("    let sb: StringBuilder = StringBuilder()\n")
     sb.append("    var i: Int64 = 0\n")
@@ -617,10 +646,12 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("    _out(\"`echo` [args...]  (built-in)\")\n")
     k = 0
     while (k < keys.size) {
+        let pkgPath: String = commandPackagePaths.get(k).getOrThrow()
         let key: String = keys.get(k).getOrThrow()
         let overloads: ArrayList<CommandInfo> = overloadsList.get(k).getOrThrow()
         let cmd0: CommandInfo = overloads.get(0).getOrThrow()
-        let line: String = _buildHelpLine(key, cmd0)
+        let displayKey: String = if (pkgPath == "/") { key } else { pkgPath + "/" + key }
+        let line: String = _buildHelpLine(displayKey, cmd0)
         sb.append("    _out(\"")
         _appendEscapedForHelp(sb, line)
         sb.append("\")\n")
@@ -628,11 +659,12 @@ public func generateDriver(manifest: Manifest): String {
     }
     cmIdx = 0
     while (cmIdx < classMethodClassNames.size) {
+        let cmPkg: String = cmPackagePaths.get(cmIdx).getOrThrow()
         let cmClass: String = classMethodClassNames.get(cmIdx).getOrThrow()
         let cmMethod: String = classMethodNames.get(cmIdx).getOrThrow()
         let cmOverloads: ArrayList<CommandInfo> = classMethodOverloadsList.get(cmIdx).getOrThrow()
         let cmd0: CommandInfo = cmOverloads.get(0).getOrThrow()
-        let cmKey: String = cmClass + " " + cmMethod
+        let cmKey: String = if (cmPkg == "/") { cmClass + " " + cmMethod } else { cmPkg + "/" + cmClass + " " + cmMethod }
         let line: String = _buildHelpLine(cmKey, cmd0)
         sb.append("    _out(\"")
         _appendEscapedForHelp(sb, line)
@@ -721,6 +753,108 @@ func _buildHelpLine(key: String, cmd: CommandInfo): String {
         }
     }
     lineSb.toString()
+}
+
+func _emitPathHelpers(sb: StringBuilder, knownPaths: ArrayList<String>): Unit {
+    sb.append("func _substring(s: String, start: Int64, end: Int64): String {\n")
+    sb.append("    let sb: StringBuilder = StringBuilder()\n")
+    sb.append("    var i: Int64 = start\n")
+    sb.append("    while (i < end && i < s.size) {\n")
+    sb.append("        sb.append(Rune(UInt32(s.get(i).getOrThrow())))\n")
+    sb.append("        i++\n")
+    sb.append("    }\n")
+    sb.append("    sb.toString()\n")
+    sb.append("}\n\n")
+    sb.append("func _pathSegments(pathStr: String): ArrayList<String> {\n")
+    sb.append("    let result: ArrayList<String> = ArrayList<String>()\n")
+    sb.append("    var start: Int64 = 0\n")
+    sb.append("    var i: Int64 = 0\n")
+    sb.append("    while (i <= pathStr.size) {\n")
+    sb.append("        if (i == pathStr.size || Int64(pathStr.get(i).getOrThrow()) == 47) {\n")
+    sb.append("            if (i > start) { result.add(all: [_substring(pathStr, start, i)]) }\n")
+    sb.append("            start = i + 1\n")
+    sb.append("        }\n")
+    sb.append("        i++\n")
+    sb.append("    }\n")
+    sb.append("    if (start < pathStr.size) { result.add(all: [_substring(pathStr, start, pathStr.size)]) }\n")
+    sb.append("    result\n")
+    sb.append("}\n\n")
+    sb.append("func _normalizePath(pathToken: String, cwd: String): Option<String> {\n")
+    sb.append("    let segs: ArrayList<String> = _pathSegments(pathToken)\n")
+    sb.append("    if (segs.size == 0) { return Option<String>.Some(cwd) }\n")
+    sb.append("    let fromRoot: Bool = pathToken.size > 0 && pathToken.get(0).getOrThrow() == 47\n")
+    sb.append("    var list: ArrayList<String> = ArrayList<String>()\n")
+    sb.append("    if (fromRoot) {\n")
+    sb.append("        var i: Int64 = 0\n")
+    sb.append("        while (i < segs.size) {\n")
+    sb.append("            let s: String = segs.get(i).getOrThrow()\n")
+    sb.append("            if (s == \".\") { }\n")
+    sb.append("            else if (s == \"..\") {\n")
+    sb.append("                if (list.size > 0) {\n")
+    sb.append("                    let newList: ArrayList<String> = ArrayList<String>()\n")
+    sb.append("                    var idx: Int64 = 0\n")
+    sb.append("                    while (idx < list.size - 1) { newList.add(all: [list.get(idx).getOrThrow()]); idx++ }\n")
+    sb.append("                    list = newList\n")
+    sb.append("                } else { return Option<String>.None }\n")
+    sb.append("            }\n")
+    sb.append("            else if (s.size > 0) { list.add(all: [s]) }\n")
+    sb.append("            i++\n")
+    sb.append("        }\n")
+    sb.append("    } else {\n")
+    sb.append("        let cwdSegs: ArrayList<String> = _pathSegments(cwd)\n")
+    sb.append("        var ci: Int64 = 0\n")
+    sb.append("        while (ci < cwdSegs.size) { list.add(all: [cwdSegs.get(ci).getOrThrow()]); ci++ }\n")
+    sb.append("        var i: Int64 = 0\n")
+    sb.append("        while (i < segs.size) {\n")
+    sb.append("            let s: String = segs.get(i).getOrThrow()\n")
+    sb.append("            if (s == \".\") { }\n")
+    sb.append("            else if (s == \"..\") {\n")
+    sb.append("                if (list.size > 0) {\n")
+    sb.append("                    let newList: ArrayList<String> = ArrayList<String>()\n")
+    sb.append("                    var idx: Int64 = 0\n")
+    sb.append("                    while (idx < list.size - 1) { newList.add(all: [list.get(idx).getOrThrow()]); idx++ }\n")
+    sb.append("                    list = newList\n")
+    sb.append("                } else { return Option<String>.None }\n")
+    sb.append("            }\n")
+    sb.append("            else if (s.size > 0) { list.add(all: [s]) }\n")
+    sb.append("            i++\n")
+    sb.append("        }\n")
+    sb.append("    }\n")
+    sb.append("    if (list.size == 0) { return Option<String>.Some(\"/\") }\n")
+    sb.append("    var joined: String = list.get(0).getOrThrow()\n")
+    sb.append("    var j: Int64 = 1\n")
+    sb.append("    while (j < list.size) { joined = joined + \"/\" + list.get(j).getOrThrow(); j++ }\n")
+    sb.append("    Option<String>.Some(joined)\n")
+    sb.append("}\n\n")
+    sb.append("func _isKnownPath(p: String): Bool {\n")
+    var pi: Int64 = 0
+    while (pi < knownPaths.size) {
+        let kp: String = knownPaths.get(pi).getOrThrow()
+        sb.append("    if (p == \"")
+        _appendEscapedForHelp(sb, kp)
+        sb.append("\") { return true }\n")
+        pi++
+    }
+    sb.append("    false\n")
+    sb.append("}\n\n")
+}
+
+func _buildKnownPaths(manifest: Manifest): ArrayList<String> {
+    let result: ArrayList<String> = ArrayList<String>()
+    result.add(all: ["/"])
+    var ci: Int64 = 0
+    while (ci < manifest.commands.size) {
+        let p: String = manifest.commands.get(ci).getOrThrow().packagePath
+        var found: Bool = false
+        var r: Int64 = 0
+        while (r < result.size) {
+            if (result.get(r).getOrThrow() == p) { found = true; break }
+            r++
+        }
+        if (!found && p.size > 0) { result.add(all: [p]) }
+        ci++
+    }
+    result
 }
 
 func _appendSafeName(sb: StringBuilder, name: String): Unit {
