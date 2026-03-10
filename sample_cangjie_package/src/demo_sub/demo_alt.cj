@@ -6,7 +6,7 @@
 package lesson_demo.demo_sub
 
 // Demo with same signature as main demo ((): Unit) but different student names (David, Eugen, Flora).
-public func demoAlt(): Unit {
+public func demo(): Unit {
     println("=== demo_sub/demoAlt: David, Eugen, Flora ===")
     println("Students: David (2001), Eugen (2002), Flora (2003)")
 }
