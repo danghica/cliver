@@ -269,7 +269,14 @@
                 if (raw) {
                   var escaped = escapeHtml(raw).replace(/\n/g, '<br>');
                   escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
-                  helpHintEl.innerHTML = escaped.replace(/_([^_]+)_/g, '<em>$1</em>');
+                  // Apply _param_ -> <em> only outside <code> so identifiers like demo_sub stay literal
+                  var parts = escaped.split(/(<code>[\s\S]*?<\/code>)/g);
+                  for (var i = 0; i < parts.length; i++) {
+                    if (parts[i].indexOf('<code>') !== 0) {
+                      parts[i] = parts[i].replace(/_([^_]+)_/g, '<em>$1</em>');
+                    }
+                  }
+                  helpHintEl.innerHTML = parts.join('');
                 } else {
                   helpHintEl.innerHTML = 'No output.';
                 }

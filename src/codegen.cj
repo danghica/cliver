@@ -252,8 +252,12 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("            }\n")
     sb.append("            continue\n")
     sb.append("        }\n")
-    sb.append("        if (command == \"help\") {\n")
+        sb.append("        if (command == \"help\") {\n")
     sb.append("            _printHelp()\n")
+    sb.append("            continue\n")
+    sb.append("        }\n")
+    sb.append("        if (command == \"dir\") {\n")
+    sb.append("            _printKnownPaths()\n")
     sb.append("            continue\n")
     sb.append("        }\n")
     sb.append("        if (command == \"echo\") {\n")
@@ -542,6 +546,7 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("func _printHelp(): Unit {\n")
     sb.append("    _out(\"Commands:\")\n")
     sb.append("    _out(\"`echo` [args...]  (built-in)\")\n")
+    sb.append("    _out(\"`dir`  (built-in)\")\n")
     k = 0
     while (k < keys.size) {
         let pkgPath: String = commandPackagePaths.get(k).getOrThrow()
@@ -738,6 +743,16 @@ func _emitPathHelpers(sb: StringBuilder, knownPaths: ArrayList<String>): Unit {
         pi++
     }
     sb.append("    false\n")
+    sb.append("}\n\n")
+    sb.append("func _printKnownPaths(): Unit {\n")
+    pi = 0
+    while (pi < knownPaths.size) {
+        let kp: String = knownPaths.get(pi).getOrThrow()
+        sb.append("    _out(\"")
+        _appendEscapedForHelp(sb, kp)
+        sb.append("\")\n")
+        pi++
+    }
     sb.append("}\n\n")
 }
 
