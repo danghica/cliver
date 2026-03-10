@@ -28,7 +28,7 @@ Clive needs the path to the **Cangjie package** for which to generate the CLI dr
 
 1. **Command line**: `--pkg <path>`
    ```bash
-   cjpm run --run-args="--pkg /absolute/or/relative/path/to/package"
+   cjpm run -- --pkg /absolute/or/relative/path/to/package
    ```
 2. **Environment variable**: `PKG_SRC`
    ```bash
@@ -42,7 +42,7 @@ If neither is set, the code falls back to `"."` (current directory). The path sh
 After building Clive, run it with the target package path:
 
 ```bash
-cjpm run --run-args="--pkg sample_cangjie_package"
+cjpm run -- --pkg sample_cangjie_package
 # or
 PKG_SRC=sample_cangjie_package cjpm run
 ```
@@ -67,9 +67,9 @@ The file **`src/cli_driver.cj`** is written into the **target** package’s `src
 
 3. **Run the CLI**:
    ```bash
-   cjpm run --run-args="help"
-   cjpm run --run-args="Student new Alice 1001"
-   cjpm run --run-args="Lesson new"
+   cjpm run -- help
+   cjpm run -- "Student new Alice 1001"
+   cjpm run -- "Lesson new"
    ```
 
    Constructors are invoked as **`ClassName new arg1 arg2 ...`**. If the return type is a class, the driver prints `ref:<id>`; you can use that id in later commands for parameters that expect a class reference, e.g. `ref:1`.
@@ -83,16 +83,16 @@ The repo includes **`sample_cangjie_package/`**, a minimal Cangjie package with 
 ```bash
 # From Clive root
 cjpm build
-cjpm run --run-args="--pkg sample_cangjie_package"
+cjpm run -- --pkg sample_cangjie_package
 ```
 
 Then in the sample package, comment out or rename `main()` in `src/main.cj`, and from `sample_cangjie_package/`:
 
 ```bash
 cjpm build
-cjpm run --run-args="help"
-cjpm run --run-args="Student new Bob 2000"
-cjpm run --run-args="Lesson new"
+cjpm run -- help
+cjpm run -- "Student new Bob 2000"
+cjpm run -- "Lesson new"
 ```
 
 ## Exit codes

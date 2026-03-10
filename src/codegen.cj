@@ -303,6 +303,7 @@ public func generateDriver(manifest: Manifest): String {
     while (k < keys.size) {
         let pkgPath: String = commandPackagePaths.get(k).getOrThrow()
         let key: String = keys.get(k).getOrThrow()
+        let runFuncName: String = _uniqueRunKey(pkgPath, key)
         let _: ArrayList<CommandInfo> = overloadsList.get(k).getOrThrow()
         sb.append("        if (resolvedDir == \"")
         _appendEscapedForHelp(sb, pkgPath)
@@ -310,7 +311,7 @@ public func generateDriver(manifest: Manifest): String {
         sb.append(key)
         sb.append("\") {\n")
         sb.append("            let _code = _run")
-        _appendSafeName(sb, key)
+        _appendSafeName(sb, runFuncName)
         sb.append("(argsList)\n")
         sb.append("            if (_code != 0) { return _code }\n")
         sb.append("            continue\n")
@@ -449,118 +450,6 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("main(): Int64 {\n")
     sb.append("    let allArgs: Array<String> = getCommandLine()\n")
     sb.append("    if (allArgs.size == 2 && allArgs[1] == \"--serve-stdin\") { return _serveStdin() }\n")
-    sb.append("    if (allArgs.size == 2 && allArgs[1] != \"--serve-stdin\") {\n")
-    sb.append("        let line: String = allArgs[1]\n")
-    sb.append("        let trimmed: String = line.trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("        let normalized: String = _normalizeCommandLine(trimmed)\n")
-    sb.append("        let segmentStrings: ArrayList<String> = _splitStringBySemicolon(normalized)\n")
-    sb.append("        let env: HashMap<String, String> = HashMap<String, String>()\n")
-    sb.append("        let outBuf: StringBuilder = StringBuilder()\n")
-    sb.append("        let errBuf: StringBuilder = StringBuilder()\n")
-    sb.append("        _outBuf = Option<StringBuilder>.Some(outBuf)\n")
-    sb.append("        _errBuf = Option<StringBuilder>.Some(errBuf)\n")
-    sb.append("        var segIdx: Int64 = 0\n")
-    sb.append("        while (segIdx < segmentStrings.size) {\n")
-    sb.append("            let segStr: String = segmentStrings.get(segIdx).getOrThrow()\n")
-    sb.append("            segIdx++\n")
-    sb.append("            let segTrimmed: String = segStr.trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("            if (segTrimmed.size == 0) { continue }\n")
-    sb.append("            match (segTrimmed.indexOf(\" = \")) {\n")
-    sb.append("                case Option<Int64>.Some(idx) =>\n")
-    sb.append("                    let envName: String = _substring(segTrimmed, 0, idx).trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("                    let commandLine: String = _substring(segTrimmed, idx + 3, segTrimmed.size).trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("                    let tokens: ArrayList<String> = _tokenizeStdinLine(commandLine, env)\n")
-    sb.append("                    if (tokens.size > 0) {\n")
-    sb.append("                        let oneSeg: ArrayList<ArrayList<String>> = ArrayList<ArrayList<String>>()\n")
-    sb.append("                        oneSeg.add(all: [tokens])\n")
-    sb.append("                        let _ = _runSegments(oneSeg)\n")
-    sb.append("                        let lastRef: String = _findLastRefInStdout(outBuf.toString())\n")
-    sb.append("                        if (envName.size > 0 && lastRef.size > 0) { env.add(envName, lastRef) }\n")
-    sb.append("                    }\n")
-    sb.append("                case _ =>\n")
-    sb.append("                    let tokens: ArrayList<String> = _tokenizeStdinLine(segTrimmed, env)\n")
-    sb.append("                    if (tokens.size > 0) {\n")
-    sb.append("                        let oneSeg: ArrayList<ArrayList<String>> = ArrayList<ArrayList<String>>()\n")
-    sb.append("                        oneSeg.add(all: [tokens])\n")
-    sb.append("                        let _ = _runSegments(oneSeg)\n")
-    sb.append("                    }\n")
-    sb.append("            }\n")
-    sb.append("        }\n")
-    sb.append("        _outNoNewline(\"")
-    _appendPkgSanitized(sb, pkg)
-    sb.append(" session finished\")\n")
-    sb.append("        let outStr: String = outBuf.toString()\n")
-    sb.append("        let errStr: String = errBuf.toString()\n")
-    sb.append("        _outBuf = Option<StringBuilder>.None\n")
-    sb.append("        _errBuf = Option<StringBuilder>.None\n")
-    sb.append("        println(_escapeNewlines(outStr) + \"\\t\" + _escapeNewlines(errStr))\n")
-    sb.append("        return 0\n")
-    sb.append("    }\n")
-    sb.append("    if (allArgs.size >= 2) {\n")
-    sb.append("        var runArgsLine: String = \"\"\n")
-    sb.append("        var ai: Int64 = 1\n")
-    sb.append("        while (ai < allArgs.size) {\n")
-    sb.append("            let a: String = allArgs[ai]\n")
-    sb.append("            if (a == \"--run-args\" && ai + 1 < allArgs.size) {\n")
-    sb.append("                runArgsLine = allArgs[ai + 1]\n")
-    sb.append("                break\n")
-    sb.append("            }\n")
-    sb.append("            if (a.size >= 11 && _substring(a, 0, 11) == \"--run-args=\") {\n")
-    sb.append("                runArgsLine = _substring(a, 11, a.size)\n")
-    sb.append("                ai++\n")
-    sb.append("                while (ai < allArgs.size) { runArgsLine = runArgsLine + \" \" + allArgs[ai]; ai++ }\n")
-    sb.append("                break\n")
-    sb.append("            }\n")
-    sb.append("            ai++\n")
-    sb.append("        }\n")
-    sb.append("        if (runArgsLine.size > 0) {\n")
-    sb.append("            let line: String = runArgsLine\n")
-    sb.append("            let trimmed: String = line.trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("            let normalized: String = _normalizeCommandLine(trimmed)\n")
-    sb.append("            let segmentStrings: ArrayList<String> = _splitStringBySemicolon(normalized)\n")
-    sb.append("            let env: HashMap<String, String> = HashMap<String, String>()\n")
-    sb.append("            let outBuf: StringBuilder = StringBuilder()\n")
-    sb.append("            let errBuf: StringBuilder = StringBuilder()\n")
-    sb.append("            _outBuf = Option<StringBuilder>.Some(outBuf)\n")
-    sb.append("            _errBuf = Option<StringBuilder>.Some(errBuf)\n")
-    sb.append("            var segIdx: Int64 = 0\n")
-    sb.append("            while (segIdx < segmentStrings.size) {\n")
-    sb.append("                let segStr: String = segmentStrings.get(segIdx).getOrThrow()\n")
-    sb.append("                segIdx++\n")
-    sb.append("                let segTrimmed: String = segStr.trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("                if (segTrimmed.size == 0) { continue }\n")
-    sb.append("                match (segTrimmed.indexOf(\" = \")) {\n")
-    sb.append("                    case Option<Int64>.Some(idx) =>\n")
-    sb.append("                        let envName: String = _substring(segTrimmed, 0, idx).trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("                        let commandLine: String = _substring(segTrimmed, idx + 3, segTrimmed.size).trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("                        let tokens: ArrayList<String> = _tokenizeStdinLine(commandLine, env)\n")
-    sb.append("                        if (tokens.size > 0) {\n")
-    sb.append("                            let oneSeg: ArrayList<ArrayList<String>> = ArrayList<ArrayList<String>>()\n")
-    sb.append("                            oneSeg.add(all: [tokens])\n")
-    sb.append("                            let _ = _runSegments(oneSeg)\n")
-    sb.append("                            let lastRef: String = _findLastRefInStdout(outBuf.toString())\n")
-    sb.append("                            if (envName.size > 0 && lastRef.size > 0) { env.add(envName, lastRef) }\n")
-    sb.append("                        }\n")
-    sb.append("                    case _ =>\n")
-    sb.append("                        let tokens: ArrayList<String> = _tokenizeStdinLine(segTrimmed, env)\n")
-    sb.append("                        if (tokens.size > 0) {\n")
-    sb.append("                            let oneSeg: ArrayList<ArrayList<String>> = ArrayList<ArrayList<String>>()\n")
-    sb.append("                            oneSeg.add(all: [tokens])\n")
-    sb.append("                            let _ = _runSegments(oneSeg)\n")
-    sb.append("                        }\n")
-    sb.append("                }\n")
-    sb.append("            }\n")
-    sb.append("            _outNoNewline(\"")
-    _appendPkgSanitized(sb, pkg)
-    sb.append(" session finished\")\n")
-    sb.append("            let outStr: String = outBuf.toString()\n")
-    sb.append("            let errStr: String = errBuf.toString()\n")
-    sb.append("            _outBuf = Option<StringBuilder>.None\n")
-    sb.append("            _errBuf = Option<StringBuilder>.None\n")
-    sb.append("            println(_escapeNewlines(outStr) + \"\\t\" + _escapeNewlines(errStr))\n")
-    sb.append("            return 0\n")
-    sb.append("        }\n")
-    sb.append("    }\n")
     sb.append("    if (allArgs.size < 2) {\n")
     sb.append("        _out(\"Usage: <command> [args...]  Separate commands with ; for ref:1, ref:2, ...\")\n")
     sb.append("        _printHelp()\n")
@@ -682,23 +571,25 @@ public func generateDriver(manifest: Manifest): String {
     }
     sb.append("}\n\n")
 
-    // Emit _runKey for each key (tries overloads in order)
+    // Emit _runKey for each key (tries overloads in order); name is unique per (packagePath, key)
     k = 0
     while (k < keys.size) {
         let key: String = keys.get(k).getOrThrow()
         let overloads: ArrayList<CommandInfo> = overloadsList.get(k).getOrThrow()
         let pkgPath: String = commandPackagePaths.get(k).getOrThrow()
-        _emitRunCommand(sb, key, overloads, pkg, pkgPath)
+        let runFuncName: String = _uniqueRunKey(pkgPath, key)
+        _emitRunCommand(sb, runFuncName, key, overloads, pkg, pkgPath)
         k++
     }
-    // Emit _runClassName_methodName for each class method
+    // Emit _runClassName_methodName for each class method (name is already unique)
     cmIdx = 0
     while (cmIdx < classMethodClassNames.size) {
         let cmClass: String = classMethodClassNames.get(cmIdx).getOrThrow()
         let cmMethod: String = classMethodNames.get(cmIdx).getOrThrow()
         let cmOverloads: ArrayList<CommandInfo> = classMethodOverloadsList.get(cmIdx).getOrThrow()
         let cmPkgPath: String = cmPackagePaths.get(cmIdx).getOrThrow()
-        _emitRunCommand(sb, cmClass + "_" + cmMethod, cmOverloads, pkg, cmPkgPath)
+        let cmRunName: String = cmClass + "_" + cmMethod
+        _emitRunCommand(sb, cmRunName, cmRunName, cmOverloads, pkg, cmPkgPath)
         cmIdx++
     }
 
@@ -889,6 +780,15 @@ func _buildKnownPaths(manifest: Manifest): ArrayList<String> {
     result
 }
 
+// Unique name for _runX when the same key exists in multiple package paths (e.g. "demo" at / and /demo_sub).
+func _uniqueRunKey(packagePath: String, key: String): String {
+    if (packagePath == "/" || packagePath.size == 0) { key }
+    else {
+        let suffix: String = packagePath.removePrefix("/")
+        if (suffix.size == 0) { key } else { key + "_" + suffix }
+    }
+}
+
 func _appendSafeName(sb: StringBuilder, name: String): Unit {
     var i: Int64 = 0
     while (i < name.size) {
@@ -915,16 +815,16 @@ func _pathToDotSuffix(pathStr: String): String {
     sb.toString()
 }
 
-func _emitRunCommand(sb: StringBuilder, key: String, overloads: ArrayList<CommandInfo>, pkgQualifiedName: String, packagePath: String): Unit {
+func _emitRunCommand(sb: StringBuilder, runFuncName: String, displayKey: String, overloads: ArrayList<CommandInfo>, pkgQualifiedName: String, packagePath: String): Unit {
     sb.append("func _run")
-    _appendSafeName(sb, key)
+    _appendSafeName(sb, runFuncName)
     sb.append("(args: ArrayList<String>): Int64 {\n")
 
     let needNew: Bool = overloads.get(0).getOrThrow().isConstructor
     if (needNew) {
         sb.append("    if (args.size < 1 || args.get(0).getOrThrow() != \"new\") {\n")
         sb.append("        _err(\"Usage: ")
-        sb.append(key)
+        sb.append(displayKey)
         sb.append(" new [args...]\")\n")
         sb.append("        return 64\n")
         sb.append("    }\n")
@@ -942,7 +842,7 @@ func _emitRunCommand(sb: StringBuilder, key: String, overloads: ArrayList<Comman
     }
 
     sb.append("    _err(\"No matching overload for ")
-    sb.append(key)
+    sb.append(displayKey)
     sb.append(" with \" + _formatArgTypes(")
     if (needNew) { sb.append("actualArgs") } else { sb.append("args") }
     sb.append("))\n")

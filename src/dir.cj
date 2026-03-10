@@ -40,7 +40,7 @@ func _collectCjFilesRec(scanDir: String, currentDir: String): ArrayList<Path> {
                 }
             } else {
                 if (name.endsWith(".cj") && name != "cli_driver.cj") {
-                    result.add(all: [entry.path])
+                    result.add(all: [Path(currentDir + "/" + name)])
                 }
             }
             i++

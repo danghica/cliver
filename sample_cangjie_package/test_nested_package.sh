@@ -34,7 +34,7 @@ fi
 echo "=== Nested package tests (demo_sub/demo_alt.cj) ==="
 
 # Run demoAlt via path (nested command) and capture output
-out=$(cjpm run --run-args="demo_sub/demoAlt" 2>/dev/null) || true
+out=$(cjpm run -- demo_sub/demoAlt 2>/dev/null) || true
 if ! echo "$out" | grep -q "David"; then
   echo "FAIL: demoAlt output should contain 'David'. Got: $out"
   exit 1

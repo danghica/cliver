@@ -36,6 +36,21 @@ func _backendScriptTemplate(): String {
         "}\n" +
         "function unescapeLine(s) { return (s && s.replace) ? s.replace(/ <NL> /g, \"\\n\") : s; }\n" +
         "const server = http.createServer();\n" +
+        "server.on('request', (req, res) => {\n" +
+        "  if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html' || req.url.startsWith('/?'))) {\n" +
+        "    try {\n" +
+        "      const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');\n" +
+        "      res.writeHead(200, { 'Content-Type': 'text/html' });\n" +
+        "      res.end(html);\n" +
+        "    } catch (e) {\n" +
+        "      res.writeHead(500, { 'Content-Type': 'text/plain' });\n" +
+        "      res.end('index.html not found');\n" +
+        "    }\n" +
+        "  } else {\n" +
+        "    res.writeHead(404, { 'Content-Type': 'text/plain' });\n" +
+        "    res.end('Not found. Open / or /index.html for the CLI.');\n" +
+        "  }\n" +
+        "});\n" +
         "const wss = new WebSocket.Server({ server });\n" +
         "wss.on('connection', (ws) => {\n" +
         "  logEntry({ event: 'NEW CONNECTION' });\n" +
@@ -78,7 +93,9 @@ func _backendScriptTemplate(): String {
         "        return;\n" +
         "      }\n" +
         "      startIdleTimer();\n" +
-        "      const p = spawn(cjpmBin, ['run', '--run-args', line], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });\n" +
+        "      const runArgsQuoted = JSON.stringify(line);\n" +
+        "      const shellCmd = cjpmBin + ' run -- ' + runArgsQuoted;\n" +
+        "      const p = spawn(process.platform === 'win32' ? 'cmd' : '/bin/sh', process.platform === 'win32' ? ['/c', shellCmd] : ['-c', shellCmd], { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });\n" +
         "      let out = '';\n" +
         "      let err = '';\n" +
         "      p.stdout.setEncoding('utf8');\n" +

@@ -26,6 +26,21 @@ function logEntry(ob) {
 }
 function unescapeLine(s) { return (s && s.replace) ? s.replace(/ <NL> /g, "\n") : s; }
 const server = http.createServer();
+server.on('request', (req, res) => {
+  if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html' || req.url.startsWith('/?'))) {
+    try {
+      const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('index.html not found');
+    }
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not found. Open / or /index.html for the CLI.');
+  }
+});
 const wss = new WebSocket.Server({ server });
 wss.on('connection', (ws) => {
   logEntry({ event: 'NEW CONNECTION' });
@@ -68,7 +83,9 @@ wss.on('connection', (ws) => {
         return;
       }
       startIdleTimer();
-      const p = spawn(cjpmBin, ['run', '--run-args', line], { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+      const runArgsQuoted = JSON.stringify(line);
+      const shellCmd = cjpmBin + ' run -- ' + runArgsQuoted;
+      const p = spawn(process.platform === 'win32' ? 'cmd' : '/bin/sh', process.platform === 'win32' ? ['/c', shellCmd] : ['-c', shellCmd], { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
       let out = '';
       let err = '';
       p.stdout.setEncoding('utf8');

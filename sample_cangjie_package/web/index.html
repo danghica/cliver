@@ -264,11 +264,14 @@
               var obj = JSON.parse(data);
               if (pendingHelpResponse) {
                 pendingHelpResponse = false;
-                var helpText = (obj.stdout || '').replace(/\s*cjpm run finished\s*/gi, '').trim();
-                if (helpText) {
-                  var escaped = escapeHtml(helpText).replace(/\n/g, '<br>');
+                var raw = (obj.stdout || '').replace(/\s*cjpm run finished\s*/gi, '').trim();
+                if (!raw && obj.stderr) raw = obj.stderr.trim();
+                if (raw) {
+                  var escaped = escapeHtml(raw).replace(/\n/g, '<br>');
                   escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
                   helpHintEl.innerHTML = escaped.replace(/_([^_]+)_/g, '<em>$1</em>');
+                } else {
+                  helpHintEl.innerHTML = 'No output.';
                 }
                 return;
               }

@@ -31,7 +31,7 @@ No runtime reflection is used: the generated driver calls the package API direct
 
 1. **Run Clive** (from the Clive project root, with Cangjie env sourced):
    ```bash
-   cjpm run --run-args="--pkg /path/to/your/package"
+   cjpm run -- --pkg /path/to/your/package
    # or: PKG_SRC=/path/to/your/package cjpm run
    ```
 2. Clive writes **`src/cli_driver.cj`** into the target package directory.
@@ -39,9 +39,9 @@ No runtime reflection is used: the generated driver calls the package API direct
 4. From the target package root: **build and run** the generated CLI:
    ```bash
    cjpm build
-   cjpm run --run-args="help"
-   cjpm run --run-args="Student new Alice 1001"
-   cjpm run --run-args="Lesson new"
+   cjpm run -- help
+   cjpm run -- "Student new Alice 1001"
+   cjpm run -- "Lesson new"
    ```
 
 ## Exit codes (Clive binary)

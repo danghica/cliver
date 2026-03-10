@@ -25,7 +25,7 @@ fi
 
 echo "=== Generating driver for sample_cangjie_package ==="
 SAMPLE_PKG_PATH="${CLIVE_ROOT}/sample_cangjie_package"
-cjpm run --run-args="--pkg ${SAMPLE_PKG_PATH}"
+cjpm run -- --pkg "${SAMPLE_PKG_PATH}"
 
 echo "=== Building sample_cangjie_package ==="
 cd sample_cangjie_package

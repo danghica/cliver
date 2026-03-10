@@ -28,13 +28,13 @@ Requires Cangjie 1.0.x toolchain and cjpm; source the Cangjie environment first.
 ```bash
 source /path/to/cangjie/envsetup.sh
 cjpm build
-cjpm run --run-args="--pkg sample_cangjie_package"
+cjpm run -- --pkg sample_cangjie_package
 ```
 
 To run Clive on another package:
 
 ```bash
-cjpm run --run-args="--pkg /path/to/other/package"
+cjpm run -- --pkg /path/to/other/package
 ```
 
 ## Tests

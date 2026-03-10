@@ -18,7 +18,7 @@ Use the Cangjie 1.0.x (cjnative) toolchain. **Source the Cangjie environment fir
 ```bash
 source /path/to/cangjie/envsetup.sh   # or add to your shell profile
 cjpm build
-cjpm run --run-args="--pkg /path/to/your/package"
+cjpm run -- --pkg /path/to/your/package
 # or
 PKG_SRC=/path/to/your/package cjpm run
 ```
@@ -62,13 +62,13 @@ Optional: put `cjc` and `cjpm` on `PATH` (e.g. add both `cangjie/bin` and `cangj
    cjpm build
    cjpm run
    ```
-   With no arguments, the driver prints usage and the list of commands. To run a command, pass it via `--run-args`:
+   With no arguments, the driver prints usage and the list of commands. To run a command, pass it after `--`:
    ```bash
-   cjpm run --run-args="help"
-   cjpm run --run-args="Student new Alice 1001"
-   cjpm run --run-args="Lesson new"
+   cjpm run -- help
+   cjpm run -- "Student new Alice 1001"
+   cjpm run -- "Lesson new"
    ```
-   Each separate `cjpm run` starts a new process, so refs reset to `ref:1`. To get **ref:1**, **ref:2**, **ref:3** in one run, pass multiple commands separated by **`;`** (e.g. `cjpm run --run-args="Student new Alice 1001 ; Lesson new ; Lesson new"`). You can use **multiple** `NAME = command` and `$NAME` in the same line; the driver processes the line segment-by-segment so later segments see refs from earlier ones (e.g. `SN1 = Student new Alice 1001 ; EV = Lesson new ; Lesson new ; $EV`). The driver prints those ref ids for future use (e.g. instance methods).
+   Each separate `cjpm run` starts a new process, so refs reset to `ref:1`. To get **ref:1**, **ref:2**, **ref:3** in one run, pass multiple commands separated by **`;`** (e.g. `cjpm run -- "Student new Alice 1001 ; Lesson new ; Lesson new"`). You can use **multiple** `NAME = command` and `$NAME` in the same line; the driver processes the line segment-by-segment so later segments see refs from earlier ones (e.g. `SN1 = Student new Alice 1001 ; EV = Lesson new ; Lesson new ; $EV`). The driver prints those ref ids for future use (e.g. instance methods).
 
 The target package may need `std.env`, `std.io`, `std.collection`, and `std.convert` in its `cjpm.toml` dependencies for the generated driver to compile.
 
@@ -88,7 +88,7 @@ This writes **`src/cli_driver.cj`** and **`web/cli_ws_server.js`** into the targ
 
 ### 2. Ensure cjpm is on PATH (or set CJPM_BIN)
 
-The backend spawns `cjpm run --run-args="<line>"` per message. Start the backend from a terminal where **`cjpm`** is on your PATH (e.g. `source /path/to/cangjie/envsetup.sh`). If not, set **`CJPM_BIN`** to the full path to `cjpm`. If you see **"spawn cjpm ENOENT"** in the browser, the backend could not find `cjpm`.
+The backend spawns `cjpm run -- "<line>"` per message. Start the backend from a terminal where **`cjpm`** is on your PATH (e.g. `source /path/to/cangjie/envsetup.sh`). If not, set **`CJPM_BIN`** to the full path to `cjpm`. If you see **"spawn cjpm ENOENT"** in the browser, the backend could not find `cjpm`.
 
 ### 3. Install backend deps and start the backend
 
@@ -149,9 +149,9 @@ PKG_SRC=sample_cangjie_package cjpm run
 cd sample_cangjie_package
 cjpm build
 cjpm run
-cjpm run --run-args="help"
-cjpm run --run-args="Student new Bob 2000"
-cjpm run --run-args="Lesson new"
+cjpm run -- help
+cjpm run -- "Student new Bob 2000"
+cjpm run -- "Lesson new"
 ```
 
 To serve the web CLI: from `sample_cangjie_package` run `npm install ws`, then `node web/cli_ws_server.js` (one terminal) and `npx serve web` (another); open `http://localhost:3000/`. See [Web interface (browser CLI)](#web-interface-browser-cli) for full steps, env vars (`NAME = command`, `$NAME`), and logs (`web/logs/cli_ws_server.log`, `DEBUG_LOG=1`).

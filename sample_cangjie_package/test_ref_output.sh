@@ -22,8 +22,8 @@ if [ "${BUILD:-0}" = "1" ]; then
 fi
 
 run_cli() {
-  # Run CLI with given run-args; stdout only (stderr discarded)
-  cjpm run --run-args="$1" 2>/dev/null
+  # Run CLI with arguments after --; stdout only (stderr discarded)
+  cjpm run -- "$1" 2>/dev/null
 }
 
 # --- Test 1: single command returns ref:1 ---

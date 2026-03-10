@@ -20,14 +20,14 @@ run() {
   local args="$1"
   local desc="${2:-$1}"
   echo "--- $desc ---"
-  if ! cjpm run --run-args="$args"; then
-    echo "FAIL: cjpm run --run-args=\"$args\" exited non-zero"
+  if ! cjpm run -- "$args"; then
+    echo "FAIL: cjpm run -- \"$args\" exited non-zero"
     exit 1
   fi
   echo ""
 }
 
-echo "Using generated CLI as in README (cjpm run --run-args=\"...\")"
+echo "Using generated CLI as in README (cjpm run -- \"...\")"
 echo ""
 
 # Help (single run)
@@ -35,7 +35,7 @@ run "help" "help"
 
 # All constructors in ONE run so refs are ref:1, ref:2, ref:3, ref:4
 echo "--- Student new Alice 1001 ; Student new Bob 1002 ; Student new Charlie 1003 ; Lesson new (one run → ref:1, ref:2, ref:3, ref:4) ---"
-out=$(cjpm run --run-args="Student new Alice 1001 ; Student new Bob 1002 ; Student new Charlie 1003 ; Lesson new" 2>/dev/null)
+out=$(cjpm run -- "Student new Alice 1001 ; Student new Bob 1002 ; Student new Charlie 1003 ; Lesson new" 2>/dev/null)
 if [ $? -ne 0 ]; then
   echo "FAIL: multi-command run exited non-zero"
   exit 1
@@ -60,7 +60,7 @@ fi
 run "demo" "demo (standalone; shows hardcoded Alice, Bob, Carol)"
 
 # Assert demo output is the expected one (Alice, Bob, Carol from demo())
-demo_out=$(cjpm run --run-args="demo" 2>/dev/null)
+demo_out=$(cjpm run -- demo 2>/dev/null)
 for line in "Alice, 1001" "Bob, 1002" "Carol, 1003"; do
   if ! echo "$demo_out" | grep -q "$line"; then
     echo "FAIL: demo() should print $line. Got: $demo_out"
