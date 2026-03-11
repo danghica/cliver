@@ -102,15 +102,11 @@ node web/cli_ws_server.js
 
 You should see `WebSocket on ws://localhost:8765`. Use **`PORT=3001`** to use another port. If you get **`EADDRINUSE`** on 8765, stop the previous backend (e.g. `kill $(lsof -t -i :8765)`).
 
-### 4. Serve the frontend and open the browser
+### 4. Open the web CLI
 
-From the same package root (another terminal):
+**Simplest:** open **`http://localhost:8765/`** in your browser. The backend serves the HTML and WebSocket on port 8765, so no separate frontend server is needed.
 
-```bash
-npx serve web
-```
-
-Open **`http://localhost:3000/`** (or the URL shown). If you get 404, ensure you ran `npx serve web` from the **package directory**, not Clive root. If you used `npx serve .`, open **`http://localhost:3000/web/`**.
+**Optional (separate static server on port 3000):** from the same package root, run `npx serve web`, then open **`http://localhost:3000/`**. If you get 404, ensure you ran `npx serve web` from the **package directory**, not Clive root. If you used `npx serve .`, open **`http://localhost:3000/web/`**.
 
 ### 5. Use the web CLI
 
@@ -154,7 +150,7 @@ cjpm run -- "Student new Bob 2000"
 cjpm run -- "Lesson new"
 ```
 
-To serve the web CLI: from `sample_cangjie_package` run `npm install ws`, then `node web/cli_ws_server.js` (one terminal) and `npx serve web` (another); open `http://localhost:3000/`. See [Web interface (browser CLI)](#web-interface-browser-cli) for full steps, env vars (`NAME = command`, `$NAME`), and logs (`web/logs/cli_ws_server.log`, `DEBUG_LOG=1`).
+To serve the web CLI: from `sample_cangjie_package` run `npm install ws`, then `node web/cli_ws_server.js` and open **`http://localhost:8765/`** (backend serves the UI). Optionally run `npx serve web` and use `http://localhost:3000/` instead. See [Web interface (browser CLI)](#web-interface-browser-cli) for full steps, env vars (`NAME = command`, `$NAME`), and logs (`web/logs/cli_ws_server.log`, `DEBUG_LOG=1`).
 
 ## File layout
 

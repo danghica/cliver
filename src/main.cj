@@ -93,9 +93,16 @@ func _backendScriptTemplate(): String {
         "        return;\n" +
         "      }\n" +
         "      startIdleTimer();\n" +
-        "      const runArgsQuoted = JSON.stringify(line);\n" +
-        "      const shellCmd = cjpmBin + ' run -- ' + runArgsQuoted;\n" +
-        "      const p = spawn(process.platform === 'win32' ? 'cmd' : '/bin/sh', process.platform === 'win32' ? ['/c', shellCmd] : ['-c', shellCmd], { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });\n" +
+        "      let p;\n" +
+        "      const defaultBin = path.join(cwd, 'target', 'release', 'bin', process.platform === 'win32' ? 'main.exe' : 'main');\n" +
+        "      const useBin = process.env.CLI_BIN || (fs.existsSync && fs.existsSync(defaultBin) ? defaultBin : null);\n" +
+        "      if (useBin) {\n" +
+        "        p = spawn(useBin, [line], { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });\n" +
+        "      } else {\n" +
+        "        const runArgsQuoted = JSON.stringify(line);\n" +
+        "        const shellCmd = cjpmBin + ' run -- ' + runArgsQuoted;\n" +
+        "        p = spawn(process.platform === 'win32' ? 'cmd' : '/bin/sh', process.platform === 'win32' ? ['/c', shellCmd] : ['-c', shellCmd], { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });\n" +
+        "      }\n" +
         "      let out = '';\n" +
         "      let err = '';\n" +
         "      p.stdout.setEncoding('utf8');\n" +

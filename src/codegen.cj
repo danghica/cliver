@@ -35,13 +35,22 @@ public func generateDriver(manifest: Manifest): String {
         sb.append("\n")
         pi++
     }
-    var subImports: ArrayList<String> = _collectSubpackageImports(manifest, pkg)
-    var si: Int64 = 0
-    while (si < subImports.size) {
-        sb.append("import ")
-        sb.append(_stripNewlines(subImports.get(si).getOrThrow()))
-        sb.append(".*\n")
-        si++
+    var aliasedList: ArrayList<String> = _collectSubpackageAliasedSymbols(manifest)
+    var ai: Int64 = 0
+    while (ai < aliasedList.size) {
+        let entry: String = aliasedList.get(ai).getOrThrow()
+        let pathSuf: String = _splitBarBefore(entry)
+        let symName: String = _splitBarAfter(entry)
+        if (symName.size > 0) {
+            let pathDot: String = _pathToDotSuffix(pathSuf)
+            let alias: String = _subpackageSymbolAlias(pathSuf, symName)
+            sb.append("import ")
+            sb.append(_stripNewlines(pkg + "." + pathDot + "." + symName))
+            sb.append(" as ")
+            sb.append(alias)
+            sb.append("\n")
+        }
+        ai++
     }
     sb.append("\n")
 
@@ -842,6 +851,89 @@ func _collectSubpackageImports(manifest: Manifest, pkg: String): ArrayList<Strin
     result
 }
 
+func _isPrimitiveOrFunctionType(typeName: String): Bool {
+    if (typeName == "Int64" || typeName == "Float64" || typeName == "Bool" || typeName == "String" || typeName == "Unit") { true }
+    else if (typeName.contains("->")) { true }
+    else { false }
+}
+
+// Collect "pathSuffix|symbolName" for subpackage symbols to import with alias: functions and types. Uniquify.
+func _collectSubpackageAliasedSymbols(manifest: Manifest): ArrayList<String> {
+    let result: ArrayList<String> = ArrayList<String>()
+    var ci: Int64 = 0
+    while (ci < manifest.commands.size) {
+        let cmd: CommandInfo = manifest.commands.get(ci).getOrThrow()
+        let path: String = cmd.packagePath
+        if (path == "/" || path.size == 0) { ci++; continue }
+        let pathNorm: String = if (path.startsWith("/")) { path.removePrefix("/") } else { path }
+        let pathSuffix: String = pathNorm
+        if (!cmd.isConstructor && !cmd.isInstanceMethod && !cmd.isStaticMethod) {
+            let entry: String = pathSuffix + "|" + cmd.name
+            var found: Bool = false
+            var r: Int64 = 0
+            while (r < result.size) {
+                if (result.get(r).getOrThrow() == entry) { found = true; break }
+                r++
+            }
+            if (!found) { result.add(all: [entry]) }
+        }
+        var typesToAdd: ArrayList<String> = ArrayList<String>()
+        if (cmd.className.size > 0) { typesToAdd.add(all: [cmd.className]) }
+        typesToAdd.add(all: [cmd.returnType])
+        var pi: Int64 = 0
+        while (pi < cmd.params.size) {
+            let p: ParamInfo = cmd.params.get(pi).getOrThrow()
+            typesToAdd.add(all: [p.paramType])
+            pi++
+        }
+        var ti: Int64 = 0
+        while (ti < typesToAdd.size) {
+            var typeName: String = typesToAdd.get(ti).getOrThrow()
+            if (typeName.startsWith("Option<")) { typeName = typeName.removePrefix("Option<").removeSuffix(">") }
+            if (_isPrimitiveOrFunctionType(typeName)) { ti++; continue }
+            let entry: String = pathSuffix + "|" + typeName
+            var found: Bool = false
+            var r: Int64 = 0
+            while (r < result.size) {
+                if (result.get(r).getOrThrow() == entry) { found = true; break }
+                r++
+            }
+            if (!found) { result.add(all: [entry]) }
+            ti++
+        }
+        ci++
+    }
+    result
+}
+
+func _splitBarBefore(entry: String): String {
+    var i: Int64 = 0
+    while (i < entry.size) {
+        if (Int64(entry.get(i).getOrThrow()) == 124) {
+            let sb: StringBuilder = StringBuilder()
+            var j: Int64 = 0
+            while (j < i) { sb.append(Rune(UInt32(entry.get(j).getOrThrow()))); j++ }
+            return sb.toString()
+        }
+        i++
+    }
+    entry
+}
+
+func _splitBarAfter(entry: String): String {
+    var i: Int64 = 0
+    while (i < entry.size) {
+        if (Int64(entry.get(i).getOrThrow()) == 124) {
+            let sb: StringBuilder = StringBuilder()
+            var j: Int64 = i + 1
+            while (j < entry.size) { sb.append(Rune(UInt32(entry.get(j).getOrThrow()))); j++ }
+            return sb.toString()
+        }
+        i++
+    }
+    ""
+}
+
 func _buildKnownPaths(manifest: Manifest): ArrayList<String> {
     let result: ArrayList<String> = ArrayList<String>()
     result.add(all: ["/"])
@@ -883,6 +975,28 @@ func _appendSafeName(sb: StringBuilder, name: String): Unit {
     }
 }
 
+// Safe identifier segment for alias (path or symbol): replace / and . with _, drop other non-identifier chars.
+func _safeIdSegment(s: String): String {
+    let sb: StringBuilder = StringBuilder()
+    var i: Int64 = 0
+    while (i < s.size) {
+        let c: Byte = s.get(i).getOrThrow()
+        let code: Int64 = Int64(c)
+        if ((code >= 97 && code <= 122) || (code >= 65 && code <= 90) || (code >= 48 && code <= 57) || code == 95) {
+            sb.append(Rune(UInt32(code)))
+        } else if (code == 47 || code == 46) {
+            sb.append(Rune(UInt32(95)))
+        }
+        i++
+    }
+    sb.toString()
+}
+
+// Deterministic alias for a subpackage symbol (function or type); used for "import pkg.path.symbol as alias".
+func _subpackageSymbolAlias(pathSuffix: String, symbolName: String): String {
+    "_cli_" + _safeIdSegment(pathSuffix) + "_" + _safeIdSegment(symbolName)
+}
+
 // Convert CLI path (e.g. "demo_sub" or "a/b/c") to Cangjie qualifier suffix (e.g. "demo_sub" or "a.b.c").
 func _pathToDotSuffix(pathStr: String): String {
     let sb: StringBuilder = StringBuilder()
@@ -914,12 +1028,15 @@ func _emitRunCommand(sb: StringBuilder, runFuncName: String, displayKey: String,
 
     // Use relative qualifier (e.g. blas.blas32.) for types so the first segment is a subpackage in scope (import cjnum.blas); full pkg.subpkg.T in type position causes "undeclared type name 'pkg'" in Cangjie.
     let pathSuffix: String = _pathToDotSuffix(if (packagePath.startsWith("/")) { packagePath.removePrefix("/") } else { packagePath })
+    let pathSuffixRaw: String = if (packagePath.startsWith("/")) { packagePath.removePrefix("/") } else { packagePath }
     let qualifier: String = if (packagePath == "/" || pathSuffix.size == 0) { "" } else { _stripNewlines(pathSuffix + ".") }
+    // Subpackage top-level function: use aliased import name for the call (Cangjie does not support fully qualified names).
+    let callAlias: String = if (packagePath == "/" || pathSuffix.size == 0) { "" } else { _subpackageSymbolAlias(pathSuffixRaw, overloads.get(0).getOrThrow().name) }
     var ov: Int64 = 0
     while (ov < overloads.size) {
         let cmd: CommandInfo = overloads.get(ov).getOrThrow()
         let argsVar: String = if (needNew) { "actualArgs" } else { "args" }
-        _emitOverload(sb, cmd, argsVar, needNew, qualifier)
+        _emitOverload(sb, cmd, argsVar, needNew, qualifier, callAlias)
         ov++
     }
 
@@ -932,21 +1049,21 @@ func _emitRunCommand(sb: StringBuilder, runFuncName: String, displayKey: String,
     sb.append("}\n\n")
 }
 
-func _emitOverload(sb: StringBuilder, cmd: CommandInfo, argsVar: String, isConstructor: Bool, qualifier: String): Unit {
+func _emitOverload(sb: StringBuilder, cmd: CommandInfo, argsVar: String, isConstructor: Bool, qualifier: String, callAlias: String): Unit {
     let n: Int64 = cmd.params.size
     sb.append("    if (")
     sb.append(argsVar)
     sb.append(".size >= ")
     sb.append(n)
     sb.append(") {\n")
-    _emitConvertAndCall(sb, cmd, argsVar, isConstructor, 0, n, "        ", qualifier)
+    _emitConvertAndCall(sb, cmd, argsVar, isConstructor, 0, n, "        ", qualifier, callAlias)
     sb.append("    }\n")
 }
 
-func _emitConvertAndCall(sb: StringBuilder, cmd: CommandInfo, argsVar: String, isConstructor: Bool, index: Int64, n: Int64, indent: String, qualifier: String): Unit {
+func _emitConvertAndCall(sb: StringBuilder, cmd: CommandInfo, argsVar: String, isConstructor: Bool, index: Int64, n: Int64, indent: String, qualifier: String, callAlias: String): Unit {
     if (index >= n) {
         sb.append(indent)
-        _emitCall(sb, cmd, isConstructor, n, qualifier)
+        _emitCall(sb, cmd, isConstructor, n, qualifier, callAlias)
         sb.append("\n")
         return
     }
@@ -958,7 +1075,7 @@ func _emitConvertAndCall(sb: StringBuilder, cmd: CommandInfo, argsVar: String, i
     sb.append("if (")
     sb.append(convVar)
     sb.append(".isSome()) {\n")
-    _emitConvertAndCall(sb, cmd, argsVar, isConstructor, index + 1, n, indent + "    ", qualifier)
+    _emitConvertAndCall(sb, cmd, argsVar, isConstructor, index + 1, n, indent + "    ", qualifier, callAlias)
     sb.append(indent)
     sb.append("}\n")
 }
@@ -1044,8 +1161,8 @@ func _escapeTypeKeyword(typeName: String): String {
     else { typeName }
 }
 
-// Qualify type with package prefix when qualifier is non-empty, so ambiguous names (e.g. Band in multiple subpackages) are resolved.
-// Do not qualify function types (e.g. (Float64) -> Bool) or primitives; escape type keywords in qualified names.
+// Qualify type: when qualifier is non-empty use aliased import name (Cangjie does not support fully qualified names).
+// Do not qualify function types or primitives.
 func _qualifyType(paramType: String, qualifier: String): String {
     if (qualifier.size == 0) { paramType }
     else if (paramType.contains("->")) { paramType }
@@ -1054,8 +1171,8 @@ func _qualifyType(paramType: String, qualifier: String): String {
         let inner: String = paramType.removePrefix("Option<").removeSuffix(">")
         if (inner == "Int64" || inner == "Float64" || inner == "Bool" || inner == "String") { paramType }
         else if (inner.contains("->")) { paramType }
-        else { "Option<" + qualifier + _escapeTypeKeyword(inner) + ">" }
-    } else { qualifier + _escapeTypeKeyword(paramType) }
+        else { "Option<" + _subpackageSymbolAlias(qualifier.removeSuffix("."), inner) + ">" }
+    } else { _subpackageSymbolAlias(qualifier.removeSuffix("."), paramType) }
 }
 
 func _appendConvertedType(sb: StringBuilder, paramType: String, qualifier: String): Unit {
@@ -1073,7 +1190,7 @@ func _appendConvertedType(sb: StringBuilder, paramType: String, qualifier: Strin
     }
 }
 
-func _emitCall(sb: StringBuilder, cmd: CommandInfo, isConstructor: Bool, n: Int64, qualifier: String): Unit {
+func _emitCall(sb: StringBuilder, cmd: CommandInfo, isConstructor: Bool, n: Int64, qualifier: String, callAlias: String): Unit {
     let qClass: String = _qualifyType(cmd.className, qualifier)
     let needResult: Bool = cmd.returnIsRef || (cmd.returnType != "Unit")
     if (isConstructor) {
@@ -1128,7 +1245,16 @@ func _emitCall(sb: StringBuilder, cmd: CommandInfo, isConstructor: Bool, n: Int6
         sb.append(")\n            ")
     } else {
         if (needResult) { sb.append("let _result = ") }
-        sb.append(cmd.name)
+        // Subpackage: use aliased import (Cangjie does not support fully qualified names).
+        if (callAlias.size > 0) {
+            sb.append(callAlias)
+        } else if (qualifier.size > 0) {
+            sb.append(qualifier.removeSuffix("."))
+            sb.append(".")
+            sb.append(cmd.name)
+        } else {
+            sb.append(cmd.name)
+        }
         sb.append("(")
         var first: Bool = true
         var pi: Int64 = 0

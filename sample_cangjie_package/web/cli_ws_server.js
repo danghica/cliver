@@ -83,9 +83,16 @@ wss.on('connection', (ws) => {
         return;
       }
       startIdleTimer();
-      const runArgsQuoted = JSON.stringify(line);
-      const shellCmd = cjpmBin + ' run -- ' + runArgsQuoted;
-      const p = spawn(process.platform === 'win32' ? 'cmd' : '/bin/sh', process.platform === 'win32' ? ['/c', shellCmd] : ['-c', shellCmd], { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
+      let p;
+      const defaultBin = path.join(cwd, 'target', 'release', 'bin', process.platform === 'win32' ? 'main.exe' : 'main');
+      const useBin = process.env.CLI_BIN || (fs.existsSync && fs.existsSync(defaultBin) ? defaultBin : null);
+      if (useBin) {
+        p = spawn(useBin, [line], { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
+      } else {
+        const runArgsQuoted = JSON.stringify(line);
+        const shellCmd = cjpmBin + ' run -- ' + runArgsQuoted;
+        p = spawn(process.platform === 'win32' ? 'cmd' : '/bin/sh', process.platform === 'win32' ? ['/c', shellCmd] : ['-c', shellCmd], { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
+      }
       let out = '';
       let err = '';
       p.stdout.setEncoding('utf8');
