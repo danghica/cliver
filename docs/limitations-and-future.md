@@ -12,9 +12,9 @@ This document summarizes the current limitations of Clive (v1) and possible futu
 
 ### Parser
 
-- **Line-based and pattern-based**: The parser scans lines for `package`, `public func`, `public class`, and `public init`. It does not build a full Cangjie AST.
+- **AST-based**: The parser uses **std.ast** (`cangjieLex`, `parseProgram`) to build an AST from package source. Limitations come from the AST shape/API and what is extracted (package header, top-level decls), not from line-scanning.
 - **Complex signatures**: Multiline function/init declarations, heavy use of generics, or unusual formatting may not be parsed correctly and may require manual adjustment of the source or the parser.
-- **Package name**: The first `package` declaration from a file at root (directly under the scan directory) is used for `packageQualifiedName`; files in subdirectories may declare different (sub)packages and are still processed.
+- **Package name and order**: The **first** file (in `collectCjFilesUnder` sorted order) with `packagePath == "/"` and a non-empty package declaration sets `packageQualifiedName`. If multiple root files declare different packages, only one wins; the rule is order-dependent. Subdirectory files may declare subpackages and are still processed.
 
 ### CLI and arguments
 
@@ -35,6 +35,9 @@ This document summarizes the current limitations of Clive (v1) and possible futu
 
 - **Single main()**: The target package must have exactly one `main()`. The user must rename or remove an existing `main()` when adopting the generated driver.
 - **Driver overwritten**: Each run of Clive overwrites `src/cli_driver.cj`; any hand edits are lost.
+- **runFromArgs semantics**: `runFromArgs(args, store, nextId)` accepts a **single command’s argv** (one command name + arguments). It does **not** split on semicolons or support `NAME = command` / `$NAME`. The Node backend spawns a process and passes the full line to the driver’s main(), which does the full line handling. For in-process use, callers must pre-split and call once per command if they need main()-equivalent behavior.
+- **Emitted “unused” helpers**: The generated driver includes `_splitArgsBySemicolon`, `_splitTokensBySemicolon`, and `runFromArgs` that may be reported unused when the driver is used only from the CLI. They are used by tests and the WebSocket backend (driver is both CLI and library); the sample package may use `-Woff unused` or document this as intentional.
+- **Ref vs value types**: `isRefType` treats a fixed set of primitives (Unit, Int64, Float64, Bool, String, Option<...>) as non-ref; everything else is ref. Collection or other std types are not explicitly listed; the rule is implicit. Supported parameter types for conversion are documented in codegen; other types (e.g. nested generics, type aliases) may be unsupported or wrong.
 
 ---
 

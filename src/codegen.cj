@@ -3,11 +3,16 @@
  * The driver imports the target package (same package when emitted into package src),
  * uses object store (monotonic id, HashMap<Int64, Any>), parses CLI args,
  * and dispatches to explicit calls with first-matching overload resolution.
+ *
+ * Delimiter used when driver prints combined stdout+stderr for the Web backend (avoids tab in output corrupting split).
+ * Emitted code uses character codes (e.g. 47 '/', 59 ';', 32 space, 9 tab, 10 newline, 13 cr, 34 '\"', 92 '\\'); consider named constants if extending.
  */
 package pkgcli
 
 import std.collection.ArrayList
 import std.core.StringBuilder
+
+let _STDERR_DELIM: String = "<<<CLIVE_STDERR>>>"
 
 // Generate full CLI driver source from manifest. Target package is the package being wrapped;
 // the generated file is intended to be placed in that package's src/ (same module, no import of package).
@@ -463,7 +468,7 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("        let errStr: String = errBuf.toString()\n")
     sb.append("        _outBuf = Option<StringBuilder>.None\n")
     sb.append("        _errBuf = Option<StringBuilder>.None\n")
-    sb.append("        println(_escapeNewlines(outStr) + \"\\t\" + _escapeNewlines(errStr))\n")
+    sb.append("        println(_escapeNewlines(outStr) + \"" + _STDERR_DELIM + "\" + _escapeNewlines(errStr))\n")
     sb.append("    }\n")
     sb.append("    _sessionState = Option<_SessionState>.None\n")
     sb.append("    return 0\n")
@@ -525,7 +530,7 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("    let errStr: String = errBuf.toString()\n")
     sb.append("    _outBuf = Option<StringBuilder>.None\n")
     sb.append("    _errBuf = Option<StringBuilder>.None\n")
-    sb.append("    println(_escapeNewlines(outStr) + \"\\t\" + _escapeNewlines(errStr))\n")
+    sb.append("    println(_escapeNewlines(outStr) + \"" + _STDERR_DELIM + "\" + _escapeNewlines(errStr))\n")
     sb.append("    return 0\n")
     sb.append("}\n\n")
 

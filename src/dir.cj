@@ -2,6 +2,10 @@
  * Directory structure module for Clive: recursive .cj collection,
  * package path derivation from file path, path normalization, known-path set.
  * Used by parser and codegen so path logic lives in one place.
+ *
+ * Public helpers normalizePath and isKnownPackagePath are the single source of truth
+ * for Clive (parser, tests). The generated driver inlines its own _normalizePath so
+ * the executable stays self-contained; behavior is intended to match this module.
  */
 package pkgcli
 
@@ -11,6 +15,9 @@ import std.core.StringBuilder
 
 // Root package path is always "/"
 public let rootPackagePath: String = "/"
+
+// Character code for path segment separator (used in _splitPathSegments).
+let _CHAR_SLASH: Int64 = 47
 
 // Recursively collect all .cj file paths under scanDir (excluding cli_driver.cj).
 // Returns paths in stable sorted order (by path string).
@@ -66,19 +73,28 @@ func _sortPathsByString(list: ArrayList<Path>): Unit {
     }
 }
 
+// Strip trailing slash for consistent path comparison (avoids "/a/b" vs "/a/b/" mismatch).
+func _normalizePathForComparison(p: String): String {
+    if (p.size > 1 && p.endsWith("/")) {
+        p.removeSuffix("/")
+    } else {
+        p
+    }
+}
+
 // Compute packagePath for a file: "/" if file is directly under scanDir, else relative dir (e.g. "demo_sub").
+// Paths are compared after normalizing (trailing slash stripped) so logical equality is consistent.
 public func packagePathFromFile(filePath: Path, scanDir: String): String {
     let parentPath: Path = filePath.parent
     let parentStr: String = parentPath.toString()
-    if (parentStr.size == 0 || parentStr == scanDir) {
+    let scanNorm: String = _normalizePathForComparison(scanDir)
+    let parentNorm: String = _normalizePathForComparison(parentStr)
+    if (parentStr.size == 0 || parentNorm == scanNorm) {
         rootPackagePath
     } else {
         let suffix: String = parentStr.removePrefix(scanDir)
-        if (suffix.startsWith("/")) {
-            suffix.removePrefix("/")
-        } else {
-            suffix
-        }
+        let stripped: String = if (suffix.startsWith("/")) { suffix.removePrefix("/") } else { suffix }
+        stripped
     }
 }
 
@@ -95,6 +111,7 @@ public func normalizePath(pathToken: String, cwd: String): Option<String> {
             if (s == ".") { }
             else if (s == "..") {
                 if (segList.size > 0) {
+                    // ArrayList has no pop; rebuild without last element (intended pattern in this codebase).
                     let newList: ArrayList<String> = ArrayList<String>()
                     var idx: Int64 = 0
                     while (idx < segList.size - 1) {
@@ -132,6 +149,7 @@ public func normalizePath(pathToken: String, cwd: String): Option<String> {
             if (s == ".") { }
             else if (s == "..") {
                 if (baseSegs.size > 0) {
+                    // ArrayList has no pop; rebuild without last element (intended pattern in this codebase).
                     let newBase: ArrayList<String> = ArrayList<String>()
                     var idx: Int64 = 0
                     while (idx < baseSegs.size - 1) {
@@ -171,7 +189,7 @@ func _splitPathSegments(pathStr: String): ArrayList<String> {
     var start: Int64 = 0
     var i: Int64 = 0
     while (i <= pathStr.size) {
-        if (i == pathStr.size || (Int64(pathStr.get(i).getOrThrow()) == 47)) {
+        if (i == pathStr.size || (Int64(pathStr.get(i).getOrThrow()) == _CHAR_SLASH)) {
             if (i > start) {
                 result.add(all: [_substring(pathStr, start, i)])
             }

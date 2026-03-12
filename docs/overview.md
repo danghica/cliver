@@ -52,6 +52,7 @@ No runtime reflection is used: the generated driver calls the package API direct
 | 64 | Usage / unknown command (when running the *generated* CLI) |
 | 65 | Invalid package path or parse failure |
 | 66 | Failed to write `cli_driver.cj` |
+| 67 | Failed to write `web/cli_ws_server.js` |
 
 ## Related docs
 

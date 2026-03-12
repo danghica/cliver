@@ -22,11 +22,11 @@ class ParserTests {
     @TestCase
     func parsePackageMinimalFixture() {
         let path: String = _fixturePath()
-        let opt: Option<Manifest> = parsePackage(path)
-        if (let Option<Manifest>.None <- opt) {
-            @Fail("parsePackage should return Some for minimal_package fixture at " + path)
+        let outcome: ParseOutcome = parsePackage(path)
+        if (outcome.manifest.isNone()) {
+            @Fail("parsePackage should succeed for minimal_package fixture at " + path + ": " + outcome.errorMessage)
         }
-        let m: Manifest = opt.getOrThrow()
+        let m: Manifest = outcome.manifest.getOrThrow()
         @Assert(m.commands.size >= 2)
         var hasHello: Bool = false
         var hasBox: Bool = false
@@ -45,11 +45,13 @@ class ParserTests {
 
     @TestCase
     func parsePackageInvalidPathReturnsNoneOrEmpty() {
-        // Invalid path: expect None, or Some with empty commands (behavior may vary by runtime)
-        let opt: Option<Manifest> = parsePackage("/nonexistent_path_abracadabra_12345")
-        if (opt.isSome()) {
-            let m: Manifest = opt.getOrThrow()
+        // Invalid path: expect failure (manifest None and errorMessage set) or empty commands
+        let outcome: ParseOutcome = parsePackage("/nonexistent_path_abracadabra_12345")
+        if (outcome.manifest.isSome()) {
+            let m: Manifest = outcome.manifest.getOrThrow()
             @Assert(m.commands.size == 0)
+        } else {
+            @Assert(outcome.errorMessage.size > 0)
         }
     }
 }

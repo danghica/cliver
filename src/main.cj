@@ -7,6 +7,24 @@ package pkgcli
 import std.env.*
 import std.fs.*
 
+// Load backend script from resources/cli_ws_server.js when running from Clive repo; else use inline template.
+func _loadBackendScript(): String {
+    match (getVariable("CLIVE_REPO_ROOT")) {
+        case Option<String>.Some(root) =>
+            try {
+                let p: String = root + "/resources/cli_ws_server.js"
+                let bytes: Array<Byte> = File.readFrom(Path(p))
+                return String.fromUtf8(bytes)
+            } catch (_) { }
+        case _ => ()
+    }
+    try {
+        let bytes: Array<Byte> = File.readFrom(Path("resources/cli_ws_server.js"))
+        return String.fromUtf8(bytes)
+    } catch (_) { }
+    _backendScriptTemplate()
+}
+
 func _backendScriptTemplate(): String {
     return "#!/usr/bin/env node\n" +
         "const http = require('http');\n" +
@@ -112,11 +130,12 @@ func _backendScriptTemplate(): String {
         "      p.on('exit', () => {\n" +
         "        try {\n" +
         "          const outClean = out.replace(/\\s*cjpm run finished\\s*/gi, '').trim();\n" +
-        "          const tab = outClean.lastIndexOf(String.fromCharCode(9));\n" +
-        "          const stdoutPart = tab >= 0 ? outClean.substring(0, tab) : outClean;\n" +
-        "          const stderrPart = tab >= 0 ? outClean.substring(tab + 1) : '';\n" +
+        "          const delim = '<<<CLIVE_STDERR>>>';\n" +
+        "          const idx = outClean.indexOf(delim);\n" +
+        "          const stdoutPart = idx >= 0 ? outClean.substring(0, idx) : outClean;\n" +
+        "          const stderrPart = idx >= 0 ? outClean.substring(idx + delim.length) : '';\n" +
         "          const outStr = unescapeLine(stdoutPart);\n" +
-        "          const errStr = (tab >= 0 ? unescapeLine(stderrPart) : err).trim();\n" +
+        "          const errStr = (idx >= 0 ? unescapeLine(stderrPart) : err).trim();\n" +
         "          logEntry({ type: 'output', stdout: outStr, stderr: errStr });\n" +
         "          ws.send(JSON.stringify({ stdout: outStr, stderr: errStr }));\n" +
         "        } catch (_) {}\n" +
@@ -151,12 +170,12 @@ main(): Int64 {
         return 65
     }
 
-    let manifestOpt: Option<Manifest> = parsePackage(pkgPath)
-    if (let Option<Manifest>.None <- manifestOpt) {
-        eprintln("Error: invalid package path or failed to parse: " + pkgPath)
+    let outcome: ParseOutcome = parsePackage(pkgPath)
+    if (outcome.manifest.isNone()) {
+        eprintln("Error: " + outcome.errorMessage)
         return 65
     }
-    let manifest: Manifest = manifestOpt.getOrThrow()
+    let manifest: Manifest = outcome.manifest.getOrThrow()
 
     if (manifest.packageQualifiedName == "pkgcli") {
         eprintln("Error: do not generate the driver into the Clive package (would add a second main). Use --pkg <path-to-your-package> or PKG_SRC=<path>.")
@@ -174,7 +193,7 @@ main(): Int64 {
         eprintln("Error: failed to write " + outPath.toString())
         return 66
     }
-    let backendScript: String = _backendScriptTemplate()
+    let backendScript: String = _loadBackendScript()
     let backendPath: Path = Path(pkgPath + "/web/cli_ws_server.js")
     try {
         var backendFile: File = File(backendPath, Write)
@@ -182,7 +201,8 @@ main(): Int64 {
         backendFile.close()
         println("Wrote " + backendPath.toString())
     } catch (_) {
-        eprintln("Note: could not write " + backendPath.toString() + " (create web/ if needed)")
+        eprintln("Error: failed to write " + backendPath.toString() + " (create web/ if needed)")
+        return 67
     }
     try {
         let indexBytes: Array<Byte> = File.readFrom(Path("sample_cangjie_package/web/index.html"))

@@ -36,10 +36,10 @@ Package path (--pkg / PKG_SRC)
 ### 1. Entrypoint (`src/main.cj`)
 
 - Reads command line and environment: `--pkg <path>` or `PKG_SRC`.
-- Calls `parsePackage(pkgPath)` → `Option<Manifest>`.
+- Calls `parsePackage(pkgPath)` → `ParseOutcome` (manifest or error message).
 - On success, calls `generateDriver(manifest)` → driver source string.
-- Writes the string to `<pkgPath>/src/cli_driver.cj`.
-- Returns exit code 0, 65 (parse/path error), or 66 (write error).
+- Writes the string to `<pkgPath>/src/cli_driver.cj`, then `web/cli_ws_server.js` (and optionally index.html).
+- Returns exit code 0, 65 (parse/path error), 66 (driver write failure), or 67 (backend write failure).
 
 ### 2. Directory structure (`src/dir.cj`)
 
@@ -54,7 +54,7 @@ Package path (--pkg / PKG_SRC)
 - **Role**: Turn package source into a structured **manifest** (package name + list of commands).
 - **Scope**: Recursively scans **all** `.cj` files under the resolved source directory (using the dir module). Multiple Cangjie packages (root + subpackages) are allowed; each command carries a **packagePath** (CLI directory).
 - **Resolve source dir**: If the given path has a `src/` subdirectory, scan `src/`; otherwise scan the path itself.
-- **Line-based parsing**: Iterates over lines looking for:
+- **AST-based parsing**: Uses **std.ast** (`cangjieLex`, `parseProgram`) to build an AST; extracts package header, top-level public functions, public classes, and public inits. Package name is taken from the **first** file (in sorted path order) with `packagePath == "/"` and a non-empty package declaration. Iterates over decls looking for:
   - `package <name>` → package name (first one at root wins for `packageQualifiedName`)
   - `public func <Name>(...)` → top-level function; extracts name, parameter list (name: type), and return type
   - `public class <ClassName>` → current class context
@@ -63,7 +63,7 @@ Package path (--pkg / PKG_SRC)
   - `packageQualifiedName: String`
   - `commands: ArrayList<CommandInfo>` (each item has a **packagePath** and is either a function or a constructor)
 
-No full Cangjie AST: the parser is pattern-based and handles a subset of syntax. Complex signatures (e.g. multiline, heavy generics) may need manual adjustment.
+Limitations come from the AST shape/API and what is extracted. Complex signatures (e.g. multiline, heavy generics) may need manual adjustment.
 
 ### 4. Code generator (`src/codegen.cj`)
 

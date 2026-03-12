@@ -102,11 +102,12 @@ wss.on('connection', (ws) => {
       p.on('exit', () => {
         try {
           const outClean = out.replace(/\s*cjpm run finished\s*/gi, '').trim();
-          const tab = outClean.lastIndexOf(String.fromCharCode(9));
-          const stdoutPart = tab >= 0 ? outClean.substring(0, tab) : outClean;
-          const stderrPart = tab >= 0 ? outClean.substring(tab + 1) : '';
+          const delim = '<<<CLIVE_STDERR>>>';
+          const idx = outClean.indexOf(delim);
+          const stdoutPart = idx >= 0 ? outClean.substring(0, idx) : outClean;
+          const stderrPart = idx >= 0 ? outClean.substring(idx + delim.length) : '';
           const outStr = unescapeLine(stdoutPart);
-          const errStr = (tab >= 0 ? unescapeLine(stderrPart) : err).trim();
+          const errStr = (idx >= 0 ? unescapeLine(stderrPart) : err).trim();
           logEntry({ type: 'output', stdout: outStr, stderr: errStr });
           ws.send(JSON.stringify({ stdout: outStr, stderr: errStr }));
         } catch (_) {}

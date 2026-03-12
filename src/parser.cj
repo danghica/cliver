@@ -8,6 +8,17 @@ import std.fs.*
 import std.collection.ArrayList
 import std.ast.*
 
+// Result of parsing a package: either success (manifest present) or failure (errorMessage set).
+public class ParseOutcome {
+    public let manifest: Option<Manifest>
+    public let errorMessage: String
+
+    public init(manifest: Option<Manifest>, errorMessage: String) {
+        this.manifest = manifest
+        this.errorMessage = errorMessage
+    }
+}
+
 // Manifest: package name + list of commands (functions and constructors)
 public class Manifest {
     public let packageQualifiedName: String
@@ -91,12 +102,19 @@ func isStatic(decl: Decl): Bool {
     false
 }
 
+// Character codes for identifier check (a-z, A-Z, _)
+let _CODE_LOWER_A: Int64 = 97
+let _CODE_LOWER_Z: Int64 = 122
+let _CODE_UPPER_A: Int64 = 65
+let _CODE_UPPER_Z: Int64 = 90
+let _CODE_UNDERSCORE: Int64 = 95
+
 // Return true if name is an operator (e.g. ==, +); such methods are not exposed as CLI commands
 func isOperatorMethodName(name: String): Bool {
     if (name.size < 1) { return true }
     let first: Byte = name.get(0).getOrThrow()
     let code: Int64 = Int64(first)
-    if ((code >= 97 && code <= 122) || (code >= 65 && code <= 90) || code == 95) { return false }
+    if ((code >= _CODE_LOWER_A && code <= _CODE_LOWER_Z) || (code >= _CODE_UPPER_A && code <= _CODE_UPPER_Z) || code == _CODE_UNDERSCORE) { return false }
     true
 }
 
@@ -168,7 +186,8 @@ func collectPublicInits(className: String, body: Body, commands: ArrayList<Comma
     }
 }
 
-// Process one parsed Program: update packageName from first file at root only, append public commands
+// Process one parsed Program: mutates packageName (first file at root sets it) and appends to commands.
+// Contract: first file with packagePath == "/" and non-empty package declaration sets package name; order is from collectCjFilesUnder (sorted paths).
 func processProgram(program: Program, packageName: ArrayList<String>, commands: ArrayList<CommandInfo>, packagePath: String): Unit {
     let header: PackageHeader = program.packageHeader
     let pkgStr: String = packageNameFromHeader(header)
@@ -211,6 +230,7 @@ func readFileAsString(path: Path): Option<String> {
 }
 
 // Resolve directory to scan: if package root has src/ subdir, use it; else use path as-is.
+// Relies on std.fs FileInfo.path.fileName being the directory entry name (e.g. "src").
 func _resolveSourceDir(sourcePath: String): String {
     try {
         let entries: Array<FileInfo> = Directory.readFrom(sourcePath)
@@ -223,8 +243,9 @@ func _resolveSourceDir(sourcePath: String): String {
     sourcePath
 }
 
-// Parse package at given path (directory containing .cj files, or package root with src/); return manifest
-public func parsePackage(sourcePath: String): Option<Manifest> {
+// Parse package at given path (directory containing .cj files, or package root with src/).
+// Returns ParseOutcome with manifest on success, or errorMessage on failure (invalid path, read error, or parse failure).
+public func parsePackage(sourcePath: String): ParseOutcome {
     try {
         let scanDir: String = _resolveSourceDir(sourcePath)
         let cjPaths: ArrayList<Path> = collectCjFilesUnder(scanDir)
@@ -237,16 +258,20 @@ public func parsePackage(sourcePath: String): Option<Manifest> {
             let pkgPath: String = packagePathFromFile(path, scanDir)
             let contentOpt: Option<String> = readFileAsString(path)
             if (let Option<String>.Some(content) <- contentOpt) {
-                let tokens: Tokens = cangjieLex(content)
-                let program: Program = parseProgram(tokens)
-                processProgram(program, packageName, commands, pkgPath)
+                try {
+                    let tokens: Tokens = cangjieLex(content)
+                    let program: Program = parseProgram(tokens)
+                    processProgram(program, packageName, commands, pkgPath)
+                } catch (_) {
+                    return ParseOutcome(Option<Manifest>.None, "failed to parse file: " + path.toString())
+                }
             }
             fi++
         }
 
         let pkgName: String = if (packageName.size > 0) { packageName.get(0).getOrThrow() } else { "default" }
-        return Option<Manifest>.Some(Manifest(pkgName, commands))
+        return ParseOutcome(Option<Manifest>.Some(Manifest(pkgName, commands)), "")
     } catch (_) {
-        return Option<Manifest>.None
+        return ParseOutcome(Option<Manifest>.None, "invalid package path or cannot read directory: " + sourcePath)
     }
 }

@@ -127,10 +127,11 @@ DEBUG_LOG=1 node web/cli_ws_server.js
 
 - `0` — success  
 - `64` — usage / unknown command  
-- `65` — invalid package path, parse failure, or attempt to generate into Clive itself  
-- `66` — failed to write `cli_driver.cj`  
+- `65` — invalid package path, parse failure, or attempt to generate into Clive itself
+- `66` — failed to write `cli_driver.cj`
+- `67` — failed to write `web/cli_ws_server.js` (e.g. `web/` missing)
 
-(Exit codes 65 and 66 are from Clive; 64 is from the **generated** driver when you run it.)
+(Exit codes 65, 66, 67 are from Clive; 64 is from the **generated** driver when you run it.)
 
 ## Sample package
 

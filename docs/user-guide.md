@@ -104,6 +104,7 @@ When you run **Clive** (the generator):
 | 0 | Driver written successfully |
 | 65 | Invalid package path or parse failure |
 | 66 | Failed to write `cli_driver.cj` |
+| 67 | Failed to write `web/cli_ws_server.js` |
 
 When you run the **generated CLI**:
 
