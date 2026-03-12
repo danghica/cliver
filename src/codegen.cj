@@ -1155,9 +1155,9 @@ func _emitConvert(sb: StringBuilder, paramType: String, argExpr: String, resultV
 
 // Cangjie type names that are keywords and must be escaped when used in qualified names (e.g. `UInt64`, `Float32`, `Rune`).
 func _escapeTypeKeyword(typeName: String): String {
-    if (typeName == "UInt64" || typeName == "UInt32" || typeName == "Int32" || typeName == "Unit"
-        || typeName == "Float32" || typeName == "Float16" || typeName == "Int8" || typeName == "UInt8"
-        || typeName == "Rune") { "`" + typeName + "`" }
+    if (typeName == "UInt64" || typeName == "UInt32" || typeName == "Int32" || typeName == "Unit" ||
+        typeName == "Float32" || typeName == "Float16" || typeName == "Int8" || typeName == "UInt8" ||
+        typeName == "Rune") { "`" + typeName + "`" }
     else { typeName }
 }
 

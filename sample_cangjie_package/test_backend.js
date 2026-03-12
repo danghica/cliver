@@ -2,15 +2,20 @@
 /**
  * Tests the WebSocket backend (web/cli_ws_server.js): connects, sends commands,
  * and asserts expected stdout/stderr. Run from sample_cangjie_package.
- * Requires: npm install ws (or run after test_sample_package.sh which uses the package).
+ * Requires: Node 18+, npm install ws (or run after test_sample_package.sh which uses the package).
  *
- * The backend runs with USE_PTY=0 (pipe mode) and has no response-timeout fallback.
- * Command-output tests require the long-lived Cangjie process to produce output;
- * they may timeout if the process does not (e.g. pipe buffering). The "exit closes session"
- * test verifies that the exit command receives sessionClosed and closes the connection.
+ * CLI_BIN: Set to the built binary path (e.g. target/release/bin/main) to run commands
+ * via the binary instead of cjpm run. Use when cjpm run does not pass arguments through.
+ * The spawned server inherits env, so CLI_BIN is passed through when set.
  *
- * Usage: node test_backend.js [--port 18765]
+ * PORT: Use a dedicated port (e.g. 18765) to avoid clashes. Timeout per message: 15s.
+ *
+ * The backend runs with USE_PTY=0 (pipe mode). The "exit closes session" test verifies
+ * that the exit command receives sessionClosed and closes the connection.
+ *
+ * Usage: node test_backend.js
  *        PORT=18765 node test_backend.js
+ *        CLI_BIN=./target/release/bin/main node test_backend.js
  * Exit: 0 on success, 1 on failure.
  */
 

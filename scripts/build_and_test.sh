@@ -16,4 +16,8 @@ fi
 echo "=== Building Clive ==="
 cjpm build
 
+echo "=== Running Clive unit tests (dir, codegen, parser) ==="
+export CLIVE_REPO_ROOT="$(pwd)"
+cjpm test
+
 BUILD_CLIVE=0 ./scripts/test_sample_package.sh

@@ -51,7 +51,7 @@ This builds Clive, generates the driver for `sample_cangjie_package`, builds the
 ./scripts/test_sample_package.sh
 ```
 
-Clive itself has no `test/` directory; the sample package contains Cangjie tests (`src/cli_driver_test.cj`), shell tests (`test_ref_output.sh`, `test_cli_usage.sh`), and WebSocket backend tests (`test_backend.js` / `test_backend.sh`). See the root [README](../README.md#testing-run-before-deployment) for details.
+Clive has in-package Cangjie tests in `src/` (e.g. `src/dir_test.cj`); run them with `cjpm test`. The sample package contains Cangjie tests (`src/cli_driver_test.cj`), shell tests (`test_ref_output.sh`, `test_cli_usage.sh`), and WebSocket backend tests (`test_backend.js` / `test_backend.sh`). See [TESTING.md](TESTING.md) for the full test plan and the root [README](../README.md#testing-run-before-deployment) for commands.
 
 ## Conventions
 

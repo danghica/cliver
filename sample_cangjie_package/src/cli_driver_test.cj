@@ -128,4 +128,59 @@ class RunFromArgsTests {
         @Assert(r4.exitCode == 0)
         // printLessonStudentNames uses println(); runFromArgs only captures _out(), so we assert success only.
     }
+
+    @TestCase
+    func echoBuiltInPrintsArgsToStdout() {
+        let store: HashMap<Int64, Any> = HashMap<Int64, Any>()
+        let r: RunFromArgsResult = runFromArgs(["echo", "ref:1"], store, 1)
+        @Assert(r.exitCode == 0)
+        @Assert(r.stdout.indexOf("ref:1").isSome())
+    }
+
+    @TestCase
+    func dirBuiltInListsPaths() {
+        let store: HashMap<Int64, Any> = HashMap<Int64, Any>()
+        let r: RunFromArgsResult = runFromArgs(["dir"], store, 1)
+        @Assert(r.exitCode == 0)
+        @Assert(r.stdout.indexOf("demo_sub").isSome() || r.stdout.indexOf("Student").isSome() || r.stdout.indexOf("Lesson").isSome())
+    }
+
+    @TestCase
+    func subpackageDemoSubExitsZero() {
+        let store: HashMap<Int64, Any> = HashMap<Int64, Any>()
+        let r: RunFromArgsResult = runFromArgs(["demo_sub/demo"], store, 1)
+        @Assert(r.exitCode == 0)
+    }
+
+    @TestCase
+    func subpackageDemoSubNestedExitsZero() {
+        let store: HashMap<Int64, Any> = HashMap<Int64, Any>()
+        let r: RunFromArgsResult = runFromArgs(["demo_sub/nested/demo"], store, 1)
+        @Assert(r.exitCode == 0)
+    }
+
+    @TestCase
+    func unknownCommandNonZeroAndStderr() {
+        let store: HashMap<Int64, Any> = HashMap<Int64, Any>()
+        let r: RunFromArgsResult = runFromArgs(["unknowncommandxyz"], store, 1)
+        @Assert(r.exitCode != 0)
+        @Assert(r.stderr.indexOf("Unknown command").isSome())
+    }
+
+    @TestCase
+    func noMatchingOverloadStudentStderr() {
+        let store: HashMap<Int64, Any> = HashMap<Int64, Any>()
+        let r: RunFromArgsResult = runFromArgs(["Student", "new", "onlyOneArg"], store, 1)
+        @Assert(r.exitCode != 0)
+        @Assert(r.stderr.indexOf("No matching overload").isSome())
+        @Assert(r.stderr.indexOf("Student").isSome())
+    }
+
+    @TestCase
+    func invalidRefNonZeroStderr() {
+        let store: HashMap<Int64, Any> = HashMap<Int64, Any>()
+        let r: RunFromArgsResult = runFromArgs(["printLessonStudentNames", "ref:99"], store, 1)
+        @Assert(r.exitCode != 0)
+        @Assert(r.stderr.size > 0)
+    }
 }
