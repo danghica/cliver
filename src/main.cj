@@ -53,6 +53,36 @@ func _backendScriptTemplate(): String {
         "  } catch (_) {}\n" +
         "}\n" +
         "function unescapeLine(s) { return (s && s.replace) ? s.replace(/ <NL> /g, \"\\n\") : s; }\n" +
+        "function handleUpload(ws, msg) {\n" +
+        "  try {\n" +
+        "    if (typeof msg.filename !== 'string' || typeof msg.data !== 'string') {\n" +
+        "      ws.send(JSON.stringify({ type: 'upload_error', message: 'Invalid upload request: filename and data are required' })); return;\n" +
+        "    }\n" +
+        "    var sanitized = path.basename(msg.filename).replace(/[^a-zA-Z0-9._-]/g, '_');\n" +
+        "    var uploadDir = '/tmp/cliver/uploads';\n" +
+        "    fs.mkdirSync(uploadDir, { recursive: true });\n" +
+        "    var uid = Date.now() + '_' + Math.random().toString(36).slice(2);\n" +
+        "    var filePath = path.join(uploadDir, uid + '_' + sanitized);\n" +
+        "    fs.writeFileSync(filePath, Buffer.from(msg.data, 'base64'));\n" +
+        "    logEntry({ type: 'upload', path: filePath });\n" +
+        "    ws.send(JSON.stringify({ type: 'upload_result', path: filePath }));\n" +
+        "  } catch (e) { try { ws.send(JSON.stringify({ type: 'upload_error', message: e.message })); } catch (_) {} }\n" +
+        "}\n" +
+        "function handleDownload(ws, msg) {\n" +
+        "  try {\n" +
+        "    if (!msg.path || typeof msg.path !== 'string') {\n" +
+        "      ws.send(JSON.stringify({ type: 'download_error', message: 'Invalid download request: path is required' })); return;\n" +
+        "    }\n" +
+        "    var resolved = path.resolve(msg.path);\n" +
+        "    if (!resolved.startsWith('/tmp/cliver/')) {\n" +
+        "      ws.send(JSON.stringify({ type: 'download_error', message: 'Access denied: path must be under /tmp/cliver/' })); return;\n" +
+        "    }\n" +
+        "    var fileData = fs.readFileSync(resolved);\n" +
+        "    var filename = path.basename(resolved);\n" +
+        "    logEntry({ type: 'download', path: resolved });\n" +
+        "    ws.send(JSON.stringify({ type: 'download_result', filename: filename, data: fileData.toString('base64') }));\n" +
+        "  } catch (e) { try { ws.send(JSON.stringify({ type: 'download_error', message: e.message })); } catch (_) {} }\n" +
+        "}\n" +
         "const server = http.createServer();\n" +
         "server.on('request', (req, res) => {\n" +
         "  if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html' || req.url.startsWith('/?'))) {\n" +
@@ -100,6 +130,8 @@ func _backendScriptTemplate(): String {
         "  ws.on('message', (data) => {\n" +
         "    try {\n" +
         "      const msg = JSON.parse(data.toString());\n" +
+        "      if (msg.type === 'upload') { handleUpload(ws, msg); return; }\n" +
+        "      if (msg.type === 'download') { handleDownload(ws, msg); return; }\n" +
         "      let line = msg.line != null ? String(msg.line).trim() : '';\n" +
         "      line = normalizeWebLine(line);\n" +
         "      if (line.length === 0) return;\n" +
