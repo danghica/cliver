@@ -74,17 +74,16 @@
     /* terminal */
     #terminal { flex: 1; display: flex; flex-direction: column; min-width: 0; }
     #history { flex: 1; overflow-y: auto; padding: 12px; min-height: 0; }
-    #history .hint {
-      color: #6e6e6e; font-size: 12px; margin-bottom: 12px;
-      padding: 8px 10px; background: #252526; border-radius: 6px; border: 1px solid #3c3c3c;
+    #history .hint { color: #6e6e6e; font-size: 13px; margin-bottom: 12px; }
+    #history .hint code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
     }
-    #history .hint code { font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
-    .msg-user { margin-bottom: 6px; }
+    .msg-user { margin-bottom: 8px; }
     .msg-user .bubble {
-      display: inline-block; max-width: 90%; padding: 6px 10px;
-      background: #1e3a4f; border: 1px solid #1a6a9a; border-radius: 6px;
-      color: #9cdcfe; font-family: ui-monospace, Consolas, monospace;
-      font-size: 13px; white-space: pre-wrap; word-break: break-word;
+      display: inline-block; max-width: 85%; padding: 8px 12px;
+      background: #2d2d2d; border: 1px solid #3c3c3c; border-radius: 6px;
+      color: #d4d4d4; white-space: pre-wrap; word-break: break-word;
     }
     .msg-event { margin-bottom: 6px; }
     .msg-event .bubble {
@@ -92,9 +91,9 @@
       background: #2a2a1e; border: 1px solid #5a5a1e; border-radius: 4px;
       color: #e5c07b; font-size: 11px;
     }
-    .msg-response { margin-bottom: 14px; }
+    .msg-response { margin-bottom: 16px; }
     .msg-response .bubble {
-      display: block; max-width: 90%; padding: 8px 12px;
+      display: inline-block; max-width: 85%; padding: 8px 12px;
       background: #252526; border: 1px solid #3c3c3c; border-radius: 6px;
       color: #cccccc; white-space: pre-wrap; word-break: break-word;
       font-family: ui-monospace, Consolas, monospace; font-size: 13px;
@@ -113,21 +112,19 @@
     }
     #input-row { display: flex; gap: 8px; align-items: flex-end; }
     #input {
-      flex: 1; min-height: 40px; padding: 8px 10px;
+      flex: 1; min-height: 44px; min-width: 120px; padding: 8px 10px;
       background: #3c3c3c; border: 1px solid #3c3c3c; border-radius: 6px;
-      color: #d4d4d4; font: inherit;
-      font-family: ui-monospace, Consolas, monospace; font-size: 13px;
-      resize: vertical; outline: none;
+      color: #d4d4d4; font: inherit; resize: both; outline: none;
     }
     #input:focus { border-color: #007acc; }
     #input::placeholder { color: #6e6e6e; }
     #send {
-      padding: 8px 16px; background: #0e639c; color: #fff;
+      padding: 10px 16px; background: #0e639c; color: #fff;
       border: none; border-radius: 6px; font: inherit; cursor: pointer; white-space: nowrap;
     }
     #send:hover { background: #1177bb; }
     #send:disabled { background: #3c3c3c; color: #6e6e6e; cursor: not-allowed; }
-    .input-hint { margin-top: 5px; font-size: 11px; color: #555; }
+    .send-hint { margin-top: 5px; font-size: 11px; color: #555; }
   </style>
 </head>
 <body>
@@ -161,10 +158,10 @@
     </div>
     <div id="input-area">
       <div id="input-row">
-        <textarea id="input" rows="2" placeholder="Type a command and press Shift+Enter to send…"></textarea>
+        <textarea id="input" rows="2" placeholder="Type a command and press Shift+Enter to send…" aria-label="Command input"></textarea>
         <button id="send" type="button" disabled>Send</button>
       </div>
-      <div class="input-hint">Shift+Enter to send &nbsp;·&nbsp; Enter for new line</div>
+      <div class="send-hint">Shift+Enter to send &nbsp;·&nbsp; Enter for new line</div>
     </div>
   </div>
 </div>
@@ -263,7 +260,10 @@
 
   function submitLine() {
     var text = inputEl.value.trim();
-    if (!text || !connected || closedBySession) return;
+    if (!text) return;
+    if (!connected || !ws || ws.readyState !== WebSocket.OPEN) {
+      setStatus('Not connected. Refresh to reconnect.', 'error'); return;
+    }
     appendUserMessage(text);
     inputEl.value = '';
     currentResponseEl = null;
@@ -295,7 +295,7 @@
             parts[j] = parts[j].replace(/_([^_]+)_/g, '<em>$1</em>');
         }
         helpHint.innerHTML = parts.join('');
-      } else { helpHint.textContent = 'No commands found.'; }
+      } else { helpHint.innerHTML = 'Help not available.'; }
       return;
     }
     if (obj.sessionClosed) {
@@ -313,21 +313,24 @@
     try {
       ws = new WebSocket(wsUrl);
       ws.onopen = function () {
-        connected = true; setStatus('Connected — ' + wsUrl, '');
+        connected = true;
+        setStatus('Connected. Type a command (e.g. Student new Alice 1001) or VAR = command for env vars.', '');
         sendBtn.disabled = false; inputEl.focus();
         pendingHelpResponse = true;
         ws.send(JSON.stringify({ line: 'help' }));
       };
       ws.onclose = function () {
         connected = false; sendBtn.disabled = true;
-        if (!closedBySession)
-          setStatus('Disconnected. Start: node web/cli_ws_server.js', 'error');
+        if (closedBySession) { setStatus('Session closed.'); }
+        else { setStatus('Disconnected. Start: node web/cli_ws_server.js', 'error'); }
       };
       ws.onerror = function () {
         setStatus('Cannot connect to ' + wsUrl + '. Run: node web/cli_ws_server.js', 'error');
       };
       ws.onmessage = function (ev) {
-        try { handleMessage(JSON.parse(ev.data)); } catch (_) {}
+        try { handleMessage(JSON.parse(ev.data)); } catch (_) {
+          historyEl.appendChild(document.createTextNode(ev.data)); scrollBottom();
+        }
       };
     } catch (e) { setStatus('Error: ' + e.message, 'error'); }
   }
