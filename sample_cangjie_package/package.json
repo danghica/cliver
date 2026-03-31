@@ -11,7 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "node-pty": "^1.1.0",
-    "ws": "^8.19.0",
+    "ws": "^8.20.0",
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0"
   }

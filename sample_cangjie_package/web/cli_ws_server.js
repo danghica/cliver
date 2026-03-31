@@ -34,9 +34,18 @@ function deriveHandle(filename, handles) {
   return base + '_' + n;
 }
 function substituteHandles(line, handles) {
-  return line.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, function(_, name) {
+  // First pass: substitute $HANDLE references
+  var result = line.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, function(_, name) {
     return handles[name] !== undefined ? handles[name] : '$' + name;
   });
+  // Second pass: substitute bare handle names (whitespace-delimited tokens)
+  var parts = result.split(/(\s+)/);
+  for (var i = 0; i < parts.length; i++) {
+    if (handles[parts[i]] !== undefined) {
+      parts[i] = handles[parts[i]];
+    }
+  }
+  return parts.join('');
 }
 const connHandles = new WeakMap();
 function handleUpload(ws, msg) {

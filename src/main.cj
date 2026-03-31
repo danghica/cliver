@@ -62,9 +62,14 @@ func _backendScriptTemplate(): String {
         "  return base + '_' + n;\n" +
         "}\n" +
         "function substituteHandles(line, handles) {\n" +
-        "  return line.replace(/\\$([A-Za-z_][A-Za-z0-9_]*)/g, function(_, name) {\n" +
+        "  var result = line.replace(/\\$([A-Za-z_][A-Za-z0-9_]*)/g, function(_, name) {\n" +
         "    return handles[name] !== undefined ? handles[name] : '$' + name;\n" +
         "  });\n" +
+        "  var parts = result.split(/(\\s+)/);\n" +
+        "  for (var i = 0; i < parts.length; i++) {\n" +
+        "    if (handles[parts[i]] !== undefined) { parts[i] = handles[parts[i]]; }\n" +
+        "  }\n" +
+        "  return parts.join('');\n" +
         "}\n" +
         "const connHandles = new WeakMap();\n" +
         "function handleUpload(ws, msg) {\n" +
