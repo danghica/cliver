@@ -25,6 +25,53 @@ function logEntry(ob) {
   } catch (_) {}
 }
 function unescapeLine(s) { return (s && s.replace) ? s.replace(/ <NL> /g, "\n") : s; }
+function deriveHandle(filename, handles) {
+  var base = path.basename(filename, path.extname(filename))
+    .toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'FILE';
+  if (handles[base] === undefined) return base;
+  var n = 2;
+  while (handles[base + '_' + n] !== undefined) n++;
+  return base + '_' + n;
+}
+function substituteHandles(line, handles) {
+  return line.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, function(_, name) {
+    return handles[name] !== undefined ? handles[name] : '$' + name;
+  });
+}
+const connHandles = new WeakMap();
+function handleUpload(ws, msg) {
+  try {
+    if (typeof msg.filename !== 'string' || typeof msg.data !== 'string') {
+      ws.send(JSON.stringify({ type: 'upload_error', message: 'Invalid upload request: filename and data are required' })); return;
+    }
+    var sanitized = path.basename(msg.filename).replace(/[^a-zA-Z0-9._-]/g, '_');
+    var uploadDir = '/tmp/cliver/uploads';
+    fs.mkdirSync(uploadDir, { recursive: true });
+    var uid = Date.now() + '_' + Math.random().toString(36).slice(2);
+    var filePath = path.join(uploadDir, uid + '_' + sanitized);
+    fs.writeFileSync(filePath, Buffer.from(msg.data, 'base64'));
+    var handles = connHandles.get(ws) || {};
+    var handle = deriveHandle(msg.filename, handles);
+    handles[handle] = filePath;
+    logEntry({ type: 'upload', path: filePath, handle: handle });
+    ws.send(JSON.stringify({ type: 'upload_result', path: filePath, handle: handle }));
+  } catch (e) { try { ws.send(JSON.stringify({ type: 'upload_error', message: e.message })); } catch (_) {} }
+}
+function handleDownload(ws, msg) {
+  try {
+    if (!msg.path || typeof msg.path !== 'string') {
+      ws.send(JSON.stringify({ type: 'download_error', message: 'Invalid download request: path is required' })); return;
+    }
+    var resolved = path.resolve(msg.path);
+    if (!resolved.startsWith('/tmp/cliver/')) {
+      ws.send(JSON.stringify({ type: 'download_error', message: 'Access denied: path must be under /tmp/cliver/' })); return;
+    }
+    var fileData = fs.readFileSync(resolved);
+    var filename = path.basename(resolved);
+    logEntry({ type: 'download', path: resolved });
+    ws.send(JSON.stringify({ type: 'download_result', filename: filename, data: fileData.toString('base64') }));
+  } catch (e) { try { ws.send(JSON.stringify({ type: 'download_error', message: e.message })); } catch (_) {} }
+}
 const server = http.createServer();
 server.on('request', (req, res) => {
   if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html' || req.url.startsWith('/?'))) {
@@ -44,6 +91,7 @@ server.on('request', (req, res) => {
 const wss = new WebSocket.Server({ server });
 wss.on('connection', (ws) => {
   logEntry({ event: 'NEW CONNECTION' });
+  connHandles.set(ws, {});
   let idleTimer = null;
   const idleTimeoutMs = parseInt(process.env.IDLE_TIMEOUT_MS || '600000', 10);
   function startIdleTimer() {
@@ -72,8 +120,11 @@ wss.on('connection', (ws) => {
   ws.on('message', (data) => {
     try {
       const msg = JSON.parse(data.toString());
+      if (msg.type === 'upload') { handleUpload(ws, msg); return; }
+      if (msg.type === 'download') { handleDownload(ws, msg); return; }
       let line = msg.line != null ? String(msg.line).trim() : '';
       line = normalizeWebLine(line);
+      line = substituteHandles(line, connHandles.get(ws) || {});
       if (line.length === 0) return;
       logEntry({ type: 'input', line: line });
       if (line === 'exit') {

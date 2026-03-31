@@ -12,6 +12,7 @@ import std.process.*
 import std.unittest.*
 import std.unittest.testmacro.*
 import std.env.*
+import std.fs.*
 
 func _getCliDriverPath(): Option<String> {
     match (getVariable("CLI_DRIVER_EXE")) {
@@ -87,6 +88,46 @@ class RunFromArgsTests {
         @Assert(result.stdout.indexOf("Student").isSome())
         @Assert(result.stdout.indexOf("Lesson").isSome())
         @Assert(result.stdout.indexOf(" new ").isSome())
+    }
+
+    @TestCase
+    func helpJsonIncludesCommandListAndFileProcessorSchema() {
+        let store: HashMap<Int64, Any> = HashMap<Int64, Any>()
+        let result: RunFromArgsResult = runFromArgs(["help", "--json"], store, 1)
+        @Assert(result.exitCode == 0)
+        @Assert(result.stdout.indexOf("\"commands\":[").isSome())
+        @Assert(result.stdout.indexOf("\"name\":\"buildUploadReport\"").isSome())
+        @Assert(result.stdout.indexOf("\"name\":\"inputPath\"").isSome())
+        @Assert(result.stdout.indexOf("\"packagePath\":\"/\"").isSome())
+        // Task 2 (agent-backend-hardening): verify commandKind and paramRole fields
+        @Assert(result.stdout.indexOf("\"commandKind\":\"function\"").isSome())
+        @Assert(result.stdout.indexOf("\"commandKind\":\"constructor\"").isSome())
+        @Assert(result.stdout.indexOf("\"commandKind\":\"method\"").isSome())
+        @Assert(result.stdout.indexOf("\"role\":\"path\"").isSome())
+        @Assert(result.stdout.indexOf("\"role\":\"ref\"").isSome())
+        @Assert(result.stdout.indexOf("\"className\":\"Student\"").isSome())
+    }
+
+    @TestCase
+    func buildUploadReportCreatesDownloadableFileUnderTmpCliver() {
+        let store: HashMap<Int64, Any> = HashMap<Int64, Any>()
+        let inputDir: String = "/tmp/cliver/uploads"
+        try { Directory.create(inputDir, recursive: true) } catch (_) { }
+        let inputPath: String = inputDir + "/demo-upload.txt"
+        var inputFile: File = File(Path(inputPath), Write)
+        inputFile.write("alpha\nbeta\ngamma\n".toArray())
+        inputFile.close()
+
+        let result: RunFromArgsResult = runFromArgs(["buildUploadReport", inputPath], store, 1)
+        @Assert(result.exitCode == 0)
+        @Assert(result.stdout.indexOf("/tmp/cliver/outputs/demo-upload.txt.report.txt").isSome())
+
+        let reportBytes: Array<Byte> = File.readFrom(Path("/tmp/cliver/outputs/demo-upload.txt.report.txt"))
+        let report: String = String.fromUtf8(reportBytes)
+        @Assert(report.indexOf("INPUT_PATH=/tmp/cliver/uploads/demo-upload.txt").isSome())
+        @Assert(report.indexOf("LINE_COUNT=3").isSome())
+        @Assert(report.indexOf("CHAR_COUNT=17").isSome())
+        @Assert(report.indexOf("UPPERCASE_PREVIEW=ALPHA").isSome())
     }
 
     @TestCase
@@ -182,5 +223,29 @@ class RunFromArgsTests {
         let r: RunFromArgsResult = runFromArgs(["printLessonStudentNames", "ref:99"], store, 1)
         @Assert(r.exitCode != 0)
         @Assert(r.stderr.size > 0)
+    }
+
+    // Task 1 (agent-backend-hardening): in-process session proof
+    // Proves that object store persists across multiple runFromArgs() calls and that
+    // instance method calls (getName/setName) read and mutate the stored object.
+    @TestCase
+    func sessionStoreAndInstanceMethodsWorkAcrossMultipleCalls() {
+        let store: HashMap<Int64, Any> = HashMap<Int64, Any>()
+        // Step 1: create Student → ref:1 stored in object store
+        let r1: RunFromArgsResult = runFromArgs(["Student", "new", "Alice", "1001"], store, 1)
+        @Assert(r1.exitCode == 0)
+        @Assert(r1.stdout.indexOf("ref:1").isSome())
+        @Assert(r1.nextId == 2)
+        // Step 2: read name via instance method → store must still hold ref:1
+        let r2: RunFromArgsResult = runFromArgs(["Student", "getName", "ref:1"], store, r1.nextId)
+        @Assert(r2.exitCode == 0)
+        @Assert(r2.stdout.indexOf("Alice").isSome())
+        // Step 3: mutate name via instance method
+        let r3: RunFromArgsResult = runFromArgs(["Student", "setName", "ref:1", "Bob"], store, r2.nextId)
+        @Assert(r3.exitCode == 0)
+        // Step 4: re-read name → mutation must be visible through the same store
+        let r4: RunFromArgsResult = runFromArgs(["Student", "getName", "ref:1"], store, r3.nextId)
+        @Assert(r4.exitCode == 0)
+        @Assert(r4.stdout.indexOf("Bob").isSome())
     }
 }

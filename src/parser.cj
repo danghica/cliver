@@ -118,6 +118,29 @@ func isOperatorMethodName(name: String): Bool {
     true
 }
 
+// Return true if FuncDecl has generic type parameters (e.g. func foo<T>(...)).
+// Scans tokens: after FUNC find the name identifier, then check if next token is LT (generic) or LPAREN (non-generic).
+func isGenericFuncDecl(fd: FuncDecl): Bool {
+    let toks = fd.toTokens()
+    let name: String = fd.identifier.value
+    var i: Int64 = 0
+    var seenFunc: Bool = false
+    var seenName: Bool = false
+    while (i < toks.size) {
+        let tok = toks[i]
+        if (!seenFunc) {
+            if (tok.kind == TokenKind.FUNC) { seenFunc = true }
+        } else if (!seenName) {
+            if (tok.value == name) { seenName = true }
+        } else {
+            if (tok.kind == TokenKind.LT) { return true }
+            if (tok.kind == TokenKind.LPAREN) { return false }
+        }
+        i++
+    }
+    false
+}
+
 // Build package name string from PackageHeader (e.g. "a.b.c" or "lesson_demo")
 func packageNameFromHeader(header: PackageHeader): String {
     let raw: String = header.toTokens().toString()
@@ -157,7 +180,7 @@ func collectClassBodyDecl(className: String, decl: Decl, commands: ArrayList<Com
             if (fd.keyword.kind == TokenKind.INIT && isPublic(fd)) {
                 let params: ArrayList<ParamInfo> = getParamList(fd)
                 commands.add(all: [CommandInfo("init", true, className, params, className, true, false, false, packagePath)])
-            } else if (fd.keyword.kind == TokenKind.FUNC && isPublic(fd) && !isOperatorMethodName(fd.identifier.value)) {
+            } else if (fd.keyword.kind == TokenKind.FUNC && isPublic(fd) && !isOperatorMethodName(fd.identifier.value) && !isGenericFuncDecl(fd)) {
                 let returnType: String = getReturnTypeStr(fd)
                 let methodParams: ArrayList<ParamInfo> = getParamList(fd)
                 if (isStatic(fd)) {
@@ -209,7 +232,7 @@ func collectTopLevelDecl(decl: Decl, commands: ArrayList<CommandInfo>, packagePa
                 collectPublicInits(cd.identifier.value, cd.body, commands, packagePath)
             }
         case fd: FuncDecl =>
-            if (isPublic(fd) && fd.keyword.kind == TokenKind.FUNC) {
+            if (isPublic(fd) && fd.keyword.kind == TokenKind.FUNC && !isGenericFuncDecl(fd)) {
                 let params: ArrayList<ParamInfo> = getParamList(fd)
                 let returnType: String = getReturnTypeStr(fd)
                 commands.add(all: [CommandInfo(fd.identifier.value, false, "", params, returnType, isRefType(returnType), false, false, packagePath)])

@@ -47,10 +47,13 @@ public func generateDriver(manifest: Manifest): String {
         let pathSuf: String = _splitBarBefore(entry)
         let symName: String = _splitBarAfter(entry)
         if (symName.size > 0) {
-            let pathDot: String = _pathToDotSuffix(pathSuf)
+            // Use canonical path (where type is actually defined) for the import source,
+            // but keep pathSuf for the alias so dispatch code references remain correct.
+            let canonicalPath: String = _canonicalPathForType(symName, manifest, pathSuf)
+            let importPathDot: String = _pathToDotSuffix(canonicalPath)
             let alias: String = _subpackageSymbolAlias(pathSuf, symName)
             sb.append("import ")
-            sb.append(_stripNewlines(pkg + "." + pathDot + "." + symName))
+            sb.append(_stripNewlines(pkg + "." + importPathDot + "." + symName))
             sb.append(" as ")
             sb.append(alias)
             sb.append("\n")
@@ -236,6 +239,23 @@ public func generateDriver(manifest: Manifest): String {
         i++
     }
 
+    // Collect class names for help --json paramRole detection at code-generation time
+    let classNamesList: ArrayList<String> = ArrayList<String>()
+    var clsIdx: Int64 = 0
+    while (clsIdx < manifest.commands.size) {
+        let clsCmd: CommandInfo = manifest.commands.get(clsIdx).getOrThrow()
+        if (clsCmd.className.size > 0) {
+            var alreadyCls: Bool = false
+            var clsJ: Int64 = 0
+            while (clsJ < classNamesList.size) {
+                if (classNamesList.get(clsJ).getOrThrow() == clsCmd.className) { alreadyCls = true; break }
+                clsJ++
+            }
+            if (!alreadyCls) { classNamesList.add(all: [clsCmd.className]) }
+        }
+        clsIdx++
+    }
+
     let knownPaths: ArrayList<String> = _buildKnownPaths(manifest)
     _emitPathHelpers(sb, knownPaths)
 
@@ -275,7 +295,11 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("            continue\n")
     sb.append("        }\n")
         sb.append("        if (command == \"help\") {\n")
-    sb.append("            _printHelp()\n")
+    sb.append("            if (argsList.size >= 1 && argsList.get(0).getOrThrow() == \"--json\") {\n")
+    sb.append("                _printHelpJson()\n")
+    sb.append("            } else {\n")
+    sb.append("                _printHelp()\n")
+    sb.append("            }\n")
     sb.append("            continue\n")
     sb.append("        }\n")
     sb.append("        if (command == \"dir\") {\n")
@@ -418,84 +442,11 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("    }\n")
     sb.append("    last\n")
     sb.append("}\n\n")
-    sb.append("func _serveStdin(): Int64 {\n")
-    sb.append("    let store: HashMap<Int64, Any> = HashMap<Int64, Any>()\n")
-    sb.append("    let state: _SessionState = _SessionState(store, 1)\n")
-    sb.append("    _sessionState = Option<_SessionState>.Some(state)\n")
-    sb.append("    let env: HashMap<String, String> = HashMap<String, String>()\n")
-    sb.append("    while (true) {\n")
-    sb.append("        let line: String = _readLineStdin()\n")
-    sb.append("        let trimmed: String = line.trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("        if (trimmed.size == 0) { break }\n")
-    sb.append("        if (trimmed == \"exit\" || trimmed == \"quit\") { break }\n")
-    sb.append("        let normalized: String = _normalizeCommandLine(trimmed)\n")
-    sb.append("        let segmentStrings: ArrayList<String> = _splitStringBySemicolon(normalized)\n")
-    sb.append("        let outBuf: StringBuilder = StringBuilder()\n")
-    sb.append("        let errBuf: StringBuilder = StringBuilder()\n")
-    sb.append("        _outBuf = Option<StringBuilder>.Some(outBuf)\n")
-    sb.append("        _errBuf = Option<StringBuilder>.Some(errBuf)\n")
-    sb.append("        var segIdx: Int64 = 0\n")
-    sb.append("        while (segIdx < segmentStrings.size) {\n")
-    sb.append("            let segStr: String = segmentStrings.get(segIdx).getOrThrow()\n")
-    sb.append("            segIdx++\n")
-    sb.append("            let segTrimmed: String = segStr.trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("            if (segTrimmed.size == 0) { continue }\n")
-    sb.append("            match (segTrimmed.indexOf(\" = \")) {\n")
-    sb.append("                case Option<Int64>.Some(idx) =>\n")
-    sb.append("                    let envName: String = _substring(segTrimmed, 0, idx).trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("                    let commandLine: String = _substring(segTrimmed, idx + 3, segTrimmed.size).trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("                    let tokens: ArrayList<String> = _tokenizeStdinLine(commandLine, env)\n")
-    sb.append("                    if (tokens.size > 0) {\n")
-    sb.append("                        let oneSeg: ArrayList<ArrayList<String>> = ArrayList<ArrayList<String>>()\n")
-    sb.append("                        oneSeg.add(all: [tokens])\n")
-    sb.append("                        let _ = _runSegments(oneSeg)\n")
-    sb.append("                        let lastRef: String = _findLastRefInStdout(outBuf.toString())\n")
-    sb.append("                        if (envName.size > 0 && lastRef.size > 0) { env.add(envName, lastRef) }\n")
-    sb.append("                    }\n")
-    sb.append("                case _ =>\n")
-    sb.append("                    let tokens: ArrayList<String> = _tokenizeStdinLine(segTrimmed, env)\n")
-    sb.append("                    if (tokens.size > 0) {\n")
-    sb.append("                        let oneSeg: ArrayList<ArrayList<String>> = ArrayList<ArrayList<String>>()\n")
-    sb.append("                        oneSeg.add(all: [tokens])\n")
-    sb.append("                        let _ = _runSegments(oneSeg)\n")
-    sb.append("                    }\n")
-    sb.append("            }\n")
-    sb.append("        }\n")
-    sb.append("        _outNoNewline(\"")
-    _appendPkgSanitized(sb, pkg)
-    sb.append(" session finished\")\n")
-    sb.append("        let outStr: String = outBuf.toString()\n")
-    sb.append("        let errStr: String = errBuf.toString()\n")
-    sb.append("        _outBuf = Option<StringBuilder>.None\n")
-    sb.append("        _errBuf = Option<StringBuilder>.None\n")
-    sb.append("        println(_escapeNewlines(outStr) + \"" + _STDERR_DELIM + "\" + _escapeNewlines(errStr))\n")
-    sb.append("    }\n")
-    sb.append("    _sessionState = Option<_SessionState>.None\n")
-    sb.append("    return 0\n")
-    sb.append("}\n\n")
-    sb.append("main(): Int64 {\n")
-    sb.append("    let allArgs: Array<String> = getCommandLine()\n")
-    sb.append("    if (allArgs.size == 2 && allArgs[1] == \"--serve-stdin\") { return _serveStdin() }\n")
-    sb.append("    if (allArgs.size < 2) {\n")
-    sb.append("        _out(\"Usage: <command> [args...]  Separate commands with ; for ref:1, ref:2, ...\")\n")
-    sb.append("        _printHelp()\n")
-    sb.append("        return 0\n")
-    sb.append("    }\n")
-    sb.append("    var argvLine: String = \"\"\n")
-    sb.append("    var joinIdx: Int64 = 1\n")
-    sb.append("    while (joinIdx < allArgs.size) {\n")
-    sb.append("        if (joinIdx > 1) { argvLine = argvLine + \" \" }\n")
-    sb.append("        argvLine = argvLine + allArgs[joinIdx]\n")
-    sb.append("        joinIdx++\n")
-    sb.append("    }\n")
-    sb.append("    let trimmed: String = argvLine.trimStart(\" \\t\").trimEnd(\" \\t\")\n")
-    sb.append("    let normalized: String = _normalizeCommandLine(trimmed)\n")
+    // Shared line-execution layer: normalize line → split by ; → run each segment.
+    // Used by both _serveStdin() and main() so full-line semantics (;, NAME=cmd) stay in sync.
+    sb.append("func _runLine(line: String, env: HashMap<String, String>, outBuf: StringBuilder): Unit {\n")
+    sb.append("    let normalized: String = _normalizeCommandLine(line)\n")
     sb.append("    let segmentStrings: ArrayList<String> = _splitStringBySemicolon(normalized)\n")
-    sb.append("    let env: HashMap<String, String> = HashMap<String, String>()\n")
-    sb.append("    let outBuf: StringBuilder = StringBuilder()\n")
-    sb.append("    let errBuf: StringBuilder = StringBuilder()\n")
-    sb.append("    _outBuf = Option<StringBuilder>.Some(outBuf)\n")
-    sb.append("    _errBuf = Option<StringBuilder>.Some(errBuf)\n")
     sb.append("    var segIdx: Int64 = 0\n")
     sb.append("    while (segIdx < segmentStrings.size) {\n")
     sb.append("        let segStr: String = segmentStrings.get(segIdx).getOrThrow()\n")
@@ -523,7 +474,57 @@ public func generateDriver(manifest: Manifest): String {
     sb.append("                }\n")
     sb.append("        }\n")
     sb.append("    }\n")
-    sb.append("    _outNoNewline(\"")
+    sb.append("}\n\n")
+    sb.append("func _serveStdin(): Int64 {\n")
+    sb.append("    let store: HashMap<Int64, Any> = HashMap<Int64, Any>()\n")
+    sb.append("    let state: _SessionState = _SessionState(store, 1)\n")
+    sb.append("    _sessionState = Option<_SessionState>.Some(state)\n")
+    sb.append("    let env: HashMap<String, String> = HashMap<String, String>()\n")
+    sb.append("    while (true) {\n")
+    sb.append("        let line: String = _readLineStdin()\n")
+    sb.append("        let trimmed: String = line.trimStart(\" \\t\").trimEnd(\" \\t\")\n")
+    sb.append("        if (trimmed.size == 0) { break }\n")
+    sb.append("        if (trimmed == \"exit\" || trimmed == \"quit\") { break }\n")
+    sb.append("        let outBuf: StringBuilder = StringBuilder()\n")
+    sb.append("        let errBuf: StringBuilder = StringBuilder()\n")
+    sb.append("        _outBuf = Option<StringBuilder>.Some(outBuf)\n")
+    sb.append("        _errBuf = Option<StringBuilder>.Some(errBuf)\n")
+    sb.append("        _runLine(trimmed, env, outBuf)\n")
+    sb.append("        _err(\"")
+    _appendPkgSanitized(sb, pkg)
+    sb.append(" session finished\")\n")
+    sb.append("        let outStr: String = outBuf.toString()\n")
+    sb.append("        let errStr: String = errBuf.toString()\n")
+    sb.append("        _outBuf = Option<StringBuilder>.None\n")
+    sb.append("        _errBuf = Option<StringBuilder>.None\n")
+    sb.append("        println(_escapeNewlines(outStr) + \"" + _STDERR_DELIM + "\" + _escapeNewlines(errStr))\n")
+    sb.append("    }\n")
+    sb.append("    _sessionState = Option<_SessionState>.None\n")
+    sb.append("    return 0\n")
+    sb.append("}\n\n")
+    sb.append("main(): Int64 {\n")
+    sb.append("    let allArgs: Array<String> = getCommandLine()\n")
+    sb.append("    if (allArgs.size == 2 && allArgs[1] == \"--serve-stdin\") { return _serveStdin() }\n")
+    sb.append("    if (allArgs.size < 2) {\n")
+    sb.append("        _out(\"Usage: <command> [args...]  Separate commands with ; for ref:1, ref:2, ...\")\n")
+    sb.append("        _printHelp()\n")
+    sb.append("        return 0\n")
+    sb.append("    }\n")
+    sb.append("    var argvLine: String = \"\"\n")
+    sb.append("    var joinIdx: Int64 = 1\n")
+    sb.append("    while (joinIdx < allArgs.size) {\n")
+    sb.append("        if (joinIdx > 1) { argvLine = argvLine + \" \" }\n")
+    sb.append("        argvLine = argvLine + allArgs[joinIdx]\n")
+    sb.append("        joinIdx++\n")
+    sb.append("    }\n")
+    sb.append("    let trimmed: String = argvLine.trimStart(\" \\t\").trimEnd(\" \\t\")\n")
+    sb.append("    let env: HashMap<String, String> = HashMap<String, String>()\n")
+    sb.append("    let outBuf: StringBuilder = StringBuilder()\n")
+    sb.append("    let errBuf: StringBuilder = StringBuilder()\n")
+    sb.append("    _outBuf = Option<StringBuilder>.Some(outBuf)\n")
+    sb.append("    _errBuf = Option<StringBuilder>.Some(errBuf)\n")
+    sb.append("    _runLine(trimmed, env, outBuf)\n")
+    sb.append("    _err(\"")
     _appendPkgSanitized(sb, pkg)
     sb.append(" session finished\")\n")
     sb.append("    let outStr: String = outBuf.toString()\n")
@@ -596,6 +597,90 @@ public func generateDriver(manifest: Manifest): String {
         sb.append("\")\n")
         cmIdx++
     }
+    sb.append("}\n\n")
+
+    // Helper: print help as JSON with commandKind + paramRole for agent schema discovery
+    sb.append("func _printHelpJson(): Unit {\n")
+    sb.append("    let jSb: StringBuilder = StringBuilder()\n")
+    sb.append("    jSb.append(\"{\\\"commands\\\":[\")\n")
+    var jsonFirst: Bool = true
+    k = 0
+    while (k < keys.size) {
+        let pkgPath2: String = commandPackagePaths.get(k).getOrThrow()
+        let key2: String = keys.get(k).getOrThrow()
+        let overloads2: ArrayList<CommandInfo> = overloadsList.get(k).getOrThrow()
+        let cmd0: CommandInfo = overloads2.get(0).getOrThrow()
+        let kindStr: String = _commandKindStr(cmd0)
+        if (!jsonFirst) { sb.append("    jSb.append(\",\")\n") }
+        jsonFirst = false
+        sb.append("    jSb.append(\"{\\\"name\\\":\\\"")
+        _appendEscapedForHelp(sb, key2)
+        sb.append("\\\",\\\"packagePath\\\":\\\"")
+        _appendEscapedForHelp(sb, pkgPath2)
+        sb.append("\\\",\\\"commandKind\\\":\\\"")
+        _appendEscapedForHelp(sb, kindStr)
+        sb.append("\\\",\\\"returnType\\\":\\\"")
+        _appendEscapedForHelp(sb, cmd0.returnType)
+        sb.append("\\\",\\\"params\\\":[\")\n")
+        var pi2: Int64 = 0
+        while (pi2 < cmd0.params.size) {
+            let p2: ParamInfo = cmd0.params.get(pi2).getOrThrow()
+            let roleStr: String = _paramRoleStr(p2.paramName, p2.paramType, classNamesList)
+            if (pi2 > 0) { sb.append("    jSb.append(\",\")\n") }
+            sb.append("    jSb.append(\"{\\\"name\\\":\\\"")
+            _appendEscapedForHelp(sb, p2.paramName)
+            sb.append("\\\",\\\"type\\\":\\\"")
+            _appendEscapedForHelp(sb, p2.paramType)
+            sb.append("\\\",\\\"role\\\":\\\"")
+            _appendEscapedForHelp(sb, roleStr)
+            sb.append("\\\"}\")\n")
+            pi2++
+        }
+        sb.append("    jSb.append(\"]}\")\n")
+        k++
+    }
+    // Emit class methods (method / staticMethod) with className field
+    var cmJsonIdx: Int64 = 0
+    while (cmJsonIdx < classMethodClassNames.size) {
+        let cmClass2: String = classMethodClassNames.get(cmJsonIdx).getOrThrow()
+        let cmMethod2: String = classMethodNames.get(cmJsonIdx).getOrThrow()
+        let cmOvs2: ArrayList<CommandInfo> = classMethodOverloadsList.get(cmJsonIdx).getOrThrow()
+        let cmCmd0: CommandInfo = cmOvs2.get(0).getOrThrow()
+        let cmKind: String = _commandKindStr(cmCmd0)
+        let cmPkg2: String = cmPackagePaths.get(cmJsonIdx).getOrThrow()
+        let cmKey2: String = cmClass2 + " " + cmMethod2
+        if (!jsonFirst) { sb.append("    jSb.append(\",\")\n") }
+        jsonFirst = false
+        sb.append("    jSb.append(\"{\\\"name\\\":\\\"")
+        _appendEscapedForHelp(sb, cmKey2)
+        sb.append("\\\",\\\"packagePath\\\":\\\"")
+        _appendEscapedForHelp(sb, cmPkg2)
+        sb.append("\\\",\\\"className\\\":\\\"")
+        _appendEscapedForHelp(sb, cmClass2)
+        sb.append("\\\",\\\"commandKind\\\":\\\"")
+        _appendEscapedForHelp(sb, cmKind)
+        sb.append("\\\",\\\"returnType\\\":\\\"")
+        _appendEscapedForHelp(sb, cmCmd0.returnType)
+        sb.append("\\\",\\\"params\\\":[\")\n")
+        var cmPi2: Int64 = 0
+        while (cmPi2 < cmCmd0.params.size) {
+            let cmP2: ParamInfo = cmCmd0.params.get(cmPi2).getOrThrow()
+            let cmRole2: String = _paramRoleStr(cmP2.paramName, cmP2.paramType, classNamesList)
+            if (cmPi2 > 0) { sb.append("    jSb.append(\",\")\n") }
+            sb.append("    jSb.append(\"{\\\"name\\\":\\\"")
+            _appendEscapedForHelp(sb, cmP2.paramName)
+            sb.append("\\\",\\\"type\\\":\\\"")
+            _appendEscapedForHelp(sb, cmP2.paramType)
+            sb.append("\\\",\\\"role\\\":\\\"")
+            _appendEscapedForHelp(sb, cmRole2)
+            sb.append("\\\"}\")\n")
+            cmPi2++
+        }
+        sb.append("    jSb.append(\"]}\")\n")
+        cmJsonIdx++
+    }
+    sb.append("    jSb.append(\"],\\\"builtins\\\":[\\\"echo\\\",\\\"dir\\\",\\\"help\\\",\\\"cd\\\"]}\")\n")
+    sb.append("    _out(jSb.toString())\n")
     sb.append("}\n\n")
 
     // Emit _runKey for each key (tries overloads in order); name is unique per (packagePath, key)
@@ -791,6 +876,18 @@ func _stripNewlines(s: String): String {
     sb.toString()
 }
 
+// Remove all space characters so "Option < T >" → "Option<T>".
+func _removeSpaces(s: String): String {
+    let sb: StringBuilder = StringBuilder()
+    var i: Int64 = 0
+    while (i < s.size) {
+        let c: Byte = s.get(i).getOrThrow()
+        if (Int64(c) != 32) { sb.append(Rune(UInt32(c))) }
+        i++
+    }
+    sb.toString()
+}
+
 // First path segment (e.g. "blas" from "blas/blas32") so parent import puts name in scope.
 func _firstPathSegment(pathNoLeadingSlash: String): String {
     var i: Int64 = 0
@@ -858,6 +955,9 @@ func _collectSubpackageImports(manifest: Manifest, pkg: String): ArrayList<Strin
 
 func _isPrimitiveOrFunctionType(typeName: String): Bool {
     if (typeName == "Int64" || typeName == "Float64" || typeName == "Bool" || typeName == "String" || typeName == "Unit") { true }
+    else if (typeName == "UInt64" || typeName == "UInt32" || typeName == "Int32" || typeName == "Int8" || typeName == "UInt8") { true }
+    else if (typeName == "Int16" || typeName == "UInt16" || typeName == "Float32" || typeName == "Char" || typeName == "Byte") { true }
+    else if (typeName == "Any" || typeName == "Nothing" || typeName == "Rune" || typeName == "StringBuilder") { true }
     else if (typeName.contains("->")) { true }
     else { false }
 }
@@ -894,7 +994,15 @@ func _collectSubpackageAliasedSymbols(manifest: Manifest): ArrayList<String> {
         var ti: Int64 = 0
         while (ti < typesToAdd.size) {
             var typeName: String = typesToAdd.get(ti).getOrThrow()
+            // Strip optional prefix ("?T" → "T")
+            if (typeName.startsWith("?")) { typeName = typeName.removePrefix("?") }
+            // Normalize spaces so "Option < T >" → "Option<T>"
+            typeName = _removeSpaces(typeName)
+            // Unwrap Option<T> → T
             if (typeName.startsWith("Option<")) { typeName = typeName.removePrefix("Option<").removeSuffix(">") }
+            // Skip generic instantiations (can't import T<U> directly)
+            if (typeName.contains("<") || typeName.contains(">")) { ti++; continue }
+            if (typeName.size == 0) { ti++; continue }
             if (_isPrimitiveOrFunctionType(typeName)) { ti++; continue }
             let entry: String = pathSuffix + "|" + typeName
             var found: Bool = false
@@ -1000,6 +1108,21 @@ func _safeIdSegment(s: String): String {
 // Deterministic alias for a subpackage symbol (function or type); used for "import pkg.path.symbol as alias".
 func _subpackageSymbolAlias(pathSuffix: String, symbolName: String): String {
     "_cli_" + _safeIdSegment(pathSuffix) + "_" + _safeIdSegment(symbolName)
+}
+
+// Find the subpackage path where typeName is actually defined (appears as cmd.className).
+// Returns defaultPath if the type is not found as a className in any command.
+func _canonicalPathForType(typeName: String, manifest: Manifest, defaultPath: String): String {
+    var i: Int64 = 0
+    while (i < manifest.commands.size) {
+        let cmd: CommandInfo = manifest.commands.get(i).getOrThrow()
+        if (cmd.className == typeName && cmd.packagePath.size > 0 && cmd.packagePath != "/") {
+            let pathNorm: String = if (cmd.packagePath.startsWith("/")) { cmd.packagePath.removePrefix("/") } else { cmd.packagePath }
+            if (pathNorm.size > 0) { return pathNorm }
+        }
+        i++
+    }
+    defaultPath
 }
 
 // Convert CLI path (e.g. "demo_sub" or "a/b/c") to Cangjie qualifier suffix (e.g. "demo_sub" or "a.b.c").
@@ -1171,10 +1294,10 @@ func _escapeTypeKeyword(typeName: String): String {
 func _qualifyType(paramType: String, qualifier: String): String {
     if (qualifier.size == 0) { paramType }
     else if (paramType.contains("->")) { paramType }
-    else if (paramType == "Int64" || paramType == "Float64" || paramType == "Bool" || paramType == "String") { paramType }
+    else if (_isPrimitiveOrFunctionType(paramType)) { paramType }
     else if (paramType.startsWith("Option<")) {
         let inner: String = paramType.removePrefix("Option<").removeSuffix(">")
-        if (inner == "Int64" || inner == "Float64" || inner == "Bool" || inner == "String") { paramType }
+        if (_isPrimitiveOrFunctionType(inner)) { paramType }
         else if (inner.contains("->")) { paramType }
         else { "Option<" + _subpackageSymbolAlias(qualifier.removeSuffix("."), inner) + ">" }
     } else { _subpackageSymbolAlias(qualifier.removeSuffix("."), paramType) }
@@ -1280,4 +1403,39 @@ func _emitCall(sb: StringBuilder, cmd: CommandInfo, isConstructor: Bool, n: Int6
     } else {
         sb.append("_out(_result.toString())\n            return 0\n")
     }
+}
+
+// Return the commandKind string for a CommandInfo (used at code-generation time for help --json).
+func _commandKindStr(cmd: CommandInfo): String {
+    if (cmd.isConstructor) { return "constructor" }
+    if (cmd.isInstanceMethod) { return "method" }
+    if (cmd.isStaticMethod) { return "staticMethod" }
+    "function"
+}
+
+// Return the paramRole string for a param (used at code-generation time for help --json).
+// Checks: ref (type is a known class), path (String + name contains path keyword), plain otherwise.
+func _paramRoleStr(paramName: String, paramType: String, classNamesList: ArrayList<String>): String {
+    var ci: Int64 = 0
+    while (ci < classNamesList.size) {
+        if (classNamesList.get(ci).getOrThrow() == paramType) { return "ref" }
+        ci++
+    }
+    if (paramType == "String") {
+        let lsb: StringBuilder = StringBuilder()
+        var li: Int64 = 0
+        while (li < paramName.size) {
+            let lc: Int64 = Int64(paramName.get(li).getOrThrow())
+            if (lc >= 65 && lc <= 90) { lsb.append(Rune(UInt32(lc + 32))) }
+            else { lsb.append(Rune(UInt32(lc))) }
+            li++
+        }
+        let lower: String = lsb.toString()
+        if (lower.indexOf("path").isSome() || lower.indexOf("file").isSome() ||
+            lower.indexOf("dir").isSome() || lower.indexOf("input").isSome() ||
+            lower.indexOf("output").isSome()) {
+            return "path"
+        }
+    }
+    "plain"
 }

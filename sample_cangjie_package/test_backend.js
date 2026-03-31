@@ -36,6 +36,9 @@ function runTests(port) {
       return;
     }
 
+    let uploadedPath = null;
+    let generatedPath = null;
+
     const tests = [
       {
         name: 'help returns commands list (and strips cjpm run finished)',
@@ -114,6 +117,44 @@ function runTests(port) {
         checkSessionClosed: true,
         check: () => true,
       },
+      {
+        name: 'upload CSV file returns path under /tmp/cliver/uploads/',
+        sendMsg: { type: 'upload', filename: 'test.csv', data: Buffer.from('name,score\nAlice,100').toString('base64') },
+        check: (stdout, stderr, j) => {
+          if (!j || j.type !== 'upload_result' || !j.path) return false;
+          if (!j.path.startsWith('/tmp/cliver/uploads/')) return false;
+          uploadedPath = j.path;
+          return true;
+        },
+      },
+      {
+        name: 'uploaded file path can be passed into cliver-generated package command to produce /tmp/cliver output',
+        getMsg: () => ({ line: `buildUploadReport ${uploadedPath}` }),
+        check: (stdout, stderr, j) => {
+          if (stderr && stderr.includes('Unknown')) return false;
+          if (!stdout || !stdout.includes('/tmp/cliver/outputs/')) return false;
+          const match = stdout.match(/\/tmp\/cliver\/outputs\/[^\s]+\.report\.txt/);
+          if (!match) return false;
+          generatedPath = match[0];
+          return generatedPath.endsWith('.report.txt');
+        },
+      },
+      {
+        name: 'download generated report round-trip (base64 decode shows processed content)',
+        getMsg: () => ({ type: 'download', path: generatedPath }),
+        check: (stdout, stderr, j) => {
+          if (!j || j.type !== 'download_result' || !j.data) return false;
+          const decoded = Buffer.from(j.data, 'base64').toString();
+          return decoded.includes('INPUT_PATH=')
+            && decoded.includes('LINE_COUNT=2')
+            && decoded.includes('UPPERCASE_PREVIEW=NAME,SCORE');
+        },
+      },
+      {
+        name: 'download path traversal blocked',
+        sendMsg: { type: 'download', path: '/etc/passwd' },
+        check: (stdout, stderr, j) => j && j.type === 'download_error',
+      },
     ];
 
     let failed = null;
@@ -142,8 +183,9 @@ function runTests(port) {
 
       let done = false;
       ws.on('open', () => {
+        const msgToSend = t.sendMsg || (t.getMsg ? t.getMsg() : null) || { line: t.line };
         if (t.expectNoResponse) {
-          ws.send(JSON.stringify({ line: t.line }));
+          ws.send(JSON.stringify(msgToSend));
           setTimeout(() => {
             if (!done) {
               done = true;
@@ -153,7 +195,7 @@ function runTests(port) {
             }
           }, 300);
         } else {
-          ws.send(JSON.stringify({ line: t.line }));
+          ws.send(JSON.stringify(msgToSend));
         }
       });
 
@@ -177,7 +219,7 @@ function runTests(port) {
             runNext();
             return;
           }
-          if (!t.check(stdout, stderr)) {
+          if (!t.check(stdout, stderr, j)) {
             if (stderr === 'Process exited.' && stdout === '') return; // wait for more output (no fallback; may never come)
             done = true;
             clearTimeout(timeout);
