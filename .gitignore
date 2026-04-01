@@ -33,3 +33,6 @@ sample_cangjie_package/web/logs/
 
 # Test fixture build outputs (fixtures themselves are tracked)
 test/fixtures/*/target/
+
+# Scripts
+scripts/run_adapter_demo.sh
