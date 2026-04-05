@@ -169,7 +169,11 @@
 <script>
 (function () {
   var params      = new URLSearchParams(location.search);
-  var wsUrl       = params.get('ws') || 'ws://localhost:8765';
+  var token       = params.get('token') || '';
+  var wsProto     = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var defaultWs   = wsProto + '//' + location.host;
+  var wsUrl       = params.get('ws') || defaultWs;
+  if (token) { wsUrl += (wsUrl.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(token); }
   var statusEl    = document.getElementById('status');
   var statusTxt   = document.getElementById('status-text');
   var historyEl   = document.getElementById('history');
@@ -296,6 +300,12 @@
         }
         helpHint.innerHTML = parts.join('');
       } else { helpHint.innerHTML = 'Help not available.'; }
+      return;
+    }
+    if (obj.type === 'auth_error') {
+      setStatus('Authentication failed: ' + (obj.message || 'invalid or missing token'), 'error');
+      sendBtn.disabled = true;
+      connected = false;
       return;
     }
     if (obj.sessionClosed) {

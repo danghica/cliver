@@ -26,7 +26,7 @@ const PORT = parseInt(process.env.PORT || String(19000 + Math.floor(Math.random(
 const cwd = path.join(__dirname);
 const serverPath = path.join(cwd, 'web', 'cli_ws_server.js');
 
-function runTests(port) {
+function runTests(port, token) {
   return new Promise((resolve, reject) => {
     let WebSocket;
     try {
@@ -171,7 +171,8 @@ function runTests(port) {
       }
 
       const t = tests[index++];
-      const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+      const wsUrl = `ws://127.0.0.1:${port}` + (token ? `?token=${encodeURIComponent(token)}` : '');
+      const ws = new WebSocket(wsUrl);
 
       const timeout = setTimeout(() => {
         if (!done) {
@@ -260,8 +261,12 @@ function main() {
   });
 
   let serverReady = false;
+  let authToken = null;
   proc.stdout.on('data', (chunk) => {
-    if (chunk.toString().includes('WebSocket on')) serverReady = true;
+    const text = chunk.toString();
+    if (text.includes('WebSocket on')) serverReady = true;
+    const tokenMatch = text.match(/Auth token:\s*(\S+)/);
+    if (tokenMatch) authToken = tokenMatch[1];
   });
 
   function killServer() {
@@ -286,7 +291,7 @@ function main() {
 
   waitForServer
     .then(() => new Promise((r) => setTimeout(r, 1500)))
-    .then(() => runTests(PORT))
+    .then(() => runTests(PORT, authToken))
     .then((err) => {
       killServer();
       if (err) {

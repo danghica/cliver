@@ -28,6 +28,8 @@ func _loadBackendScript(): String {
 func _backendScriptTemplate(): String {
     return "#!/usr/bin/env node\n" +
         "const http = require('http');\n" +
+        "const https = require('https');\n" +
+        "const crypto = require('crypto');\n" +
         "const WebSocket = require('ws');\n" +
         "const { spawn } = require('child_process');\n" +
         "const path = require('path');\n" +
@@ -38,6 +40,7 @@ func _backendScriptTemplate(): String {
         "const DEBUG_LOG = process.env.DEBUG_LOG === '1';\n" +
         "const LOG_DIR = path.join(__dirname, 'logs');\n" +
         "const LOG_PATH = path.join(LOG_DIR, 'cli_ws_server.log');\n" +
+        "const AUTH_TOKEN = (process.env.CLIVER_AUTH_TOKEN && process.env.CLIVER_AUTH_TOKEN.length > 0) ? process.env.CLIVER_AUTH_TOKEN : crypto.randomBytes(32).toString('hex');\n" +
         "function debug(ob) {\n" +
         "  if (!DEBUG_LOG) return;\n" +
         "  try {\n" +
@@ -105,7 +108,19 @@ func _backendScriptTemplate(): String {
         "    ws.send(JSON.stringify({ type: 'download_result', filename: filename, data: fileData.toString('base64') }));\n" +
         "  } catch (e) { try { ws.send(JSON.stringify({ type: 'download_error', message: e.message })); } catch (_) {} }\n" +
         "}\n" +
-        "const server = http.createServer();\n" +
+        "var tlsEnabled = false;\n" +
+        "var server;\n" +
+        "var tlsCert = process.env.CLIVER_TLS_CERT;\n" +
+        "var tlsKey = process.env.CLIVER_TLS_KEY;\n" +
+        "if (tlsCert && tlsKey) {\n" +
+        "  server = https.createServer({ cert: fs.readFileSync(tlsCert), key: fs.readFileSync(tlsKey) });\n" +
+        "  tlsEnabled = true;\n" +
+        "} else {\n" +
+        "  if ((tlsCert && !tlsKey) || (!tlsCert && tlsKey)) {\n" +
+        "    process.stderr.write('Warning: only one of CLIVER_TLS_CERT/CLIVER_TLS_KEY is set, TLS disabled\\n');\n" +
+        "  }\n" +
+        "  server = http.createServer();\n" +
+        "}\n" +
         "server.on('request', (req, res) => {\n" +
         "  if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html' || req.url.startsWith('/?'))) {\n" +
         "    try {\n" +
@@ -122,7 +137,15 @@ func _backendScriptTemplate(): String {
         "  }\n" +
         "});\n" +
         "const wss = new WebSocket.Server({ server });\n" +
-        "wss.on('connection', (ws) => {\n" +
+        "wss.on('connection', (ws, req) => {\n" +
+        "  var reqUrl = new URL(req.url, 'http://localhost');\n" +
+        "  var clientToken = reqUrl.searchParams.get('token');\n" +
+        "  if (clientToken !== AUTH_TOKEN) {\n" +
+        "    logEntry({ event: 'AUTH_FAILURE', reason: clientToken == null ? 'missing_token' : 'invalid_token' });\n" +
+        "    ws.send(JSON.stringify({ type: 'auth_error', message: 'Authentication failed: invalid or missing token' }), () => ws.close(4401));\n" +
+        "    return;\n" +
+        "  }\n" +
+        "  logEntry({ event: 'AUTH_SUCCESS' });\n" +
         "  logEntry({ event: 'NEW CONNECTION' });\n" +
         "  connHandles.set(ws, {});\n" +
         "  let idleTimer = null;\n" +
@@ -201,7 +224,14 @@ func _backendScriptTemplate(): String {
         "  });\n" +
         "  ws.on('close', () => { clearIdleTimer(); });\n" +
         "});\n" +
-        "server.listen(PORT, () => { logEntry({ event: 'SERVER_START' }); console.log('WebSocket on ws://localhost:' + PORT); });\n"
+        "server.listen(PORT, () => {\n" +
+        "  logEntry({ event: 'SERVER_START', tlsEnabled: tlsEnabled });\n" +
+        "  var proto = tlsEnabled ? 'wss' : 'ws';\n" +
+        "  var httpProto = tlsEnabled ? 'https' : 'http';\n" +
+        "  console.log('WebSocket on ' + proto + '://localhost:' + PORT);\n" +
+        "  console.log('Auth token: ' + AUTH_TOKEN);\n" +
+        "  console.log('Open: ' + httpProto + '://localhost:' + PORT + '/?token=' + encodeURIComponent(AUTH_TOKEN));\n" +
+        "});\n"
 }
 
 main(): Int64 {
