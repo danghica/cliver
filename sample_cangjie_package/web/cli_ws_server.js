@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 const http = require('http');
+const https = require('https');
+const crypto = require('crypto');
 const WebSocket = require('ws');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -10,6 +12,7 @@ const cjpmBin = process.env.CJPM_BIN || 'cjpm';
 const DEBUG_LOG = process.env.DEBUG_LOG === '1';
 const LOG_DIR = path.join(__dirname, 'logs');
 const LOG_PATH = path.join(LOG_DIR, 'cli_ws_server.log');
+const AUTH_TOKEN = (process.env.CLIVER_AUTH_TOKEN && process.env.CLIVER_AUTH_TOKEN.length > 0) ? process.env.CLIVER_AUTH_TOKEN : crypto.randomBytes(32).toString('hex');
 function debug(ob) {
   if (!DEBUG_LOG) return;
   try {
@@ -34,16 +37,12 @@ function deriveHandle(filename, handles) {
   return base + '_' + n;
 }
 function substituteHandles(line, handles) {
-  // First pass: substitute $HANDLE references
   var result = line.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, function(_, name) {
     return handles[name] !== undefined ? handles[name] : '$' + name;
   });
-  // Second pass: substitute bare handle names (whitespace-delimited tokens)
   var parts = result.split(/(\s+)/);
   for (var i = 0; i < parts.length; i++) {
-    if (handles[parts[i]] !== undefined) {
-      parts[i] = handles[parts[i]];
-    }
+    if (handles[parts[i]] !== undefined) { parts[i] = handles[parts[i]]; }
   }
   return parts.join('');
 }
@@ -81,7 +80,19 @@ function handleDownload(ws, msg) {
     ws.send(JSON.stringify({ type: 'download_result', filename: filename, data: fileData.toString('base64') }));
   } catch (e) { try { ws.send(JSON.stringify({ type: 'download_error', message: e.message })); } catch (_) {} }
 }
-const server = http.createServer();
+var tlsEnabled = false;
+var server;
+var tlsCert = process.env.CLIVER_TLS_CERT;
+var tlsKey = process.env.CLIVER_TLS_KEY;
+if (tlsCert && tlsKey) {
+  server = https.createServer({ cert: fs.readFileSync(tlsCert), key: fs.readFileSync(tlsKey) });
+  tlsEnabled = true;
+} else {
+  if ((tlsCert && !tlsKey) || (!tlsCert && tlsKey)) {
+    process.stderr.write('Warning: only one of CLIVER_TLS_CERT/CLIVER_TLS_KEY is set, TLS disabled\n');
+  }
+  server = http.createServer();
+}
 server.on('request', (req, res) => {
   if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html' || req.url.startsWith('/?'))) {
     try {
@@ -98,7 +109,15 @@ server.on('request', (req, res) => {
   }
 });
 const wss = new WebSocket.Server({ server });
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  var reqUrl = new URL(req.url, 'http://localhost');
+  var clientToken = reqUrl.searchParams.get('token');
+  if (clientToken !== AUTH_TOKEN) {
+    logEntry({ event: 'AUTH_FAILURE', reason: clientToken == null ? 'missing_token' : 'invalid_token' });
+    ws.send(JSON.stringify({ type: 'auth_error', message: 'Authentication failed: invalid or missing token' }), () => ws.close(4401));
+    return;
+  }
+  logEntry({ event: 'AUTH_SUCCESS' });
   logEntry({ event: 'NEW CONNECTION' });
   connHandles.set(ws, {});
   let idleTimer = null;
@@ -177,4 +196,11 @@ wss.on('connection', (ws) => {
   });
   ws.on('close', () => { clearIdleTimer(); });
 });
-server.listen(PORT, () => { logEntry({ event: 'SERVER_START' }); console.log('WebSocket on ws://localhost:' + PORT); });
+server.listen(PORT, () => {
+  logEntry({ event: 'SERVER_START', tlsEnabled: tlsEnabled });
+  var proto = tlsEnabled ? 'wss' : 'ws';
+  var httpProto = tlsEnabled ? 'https' : 'http';
+  console.log('WebSocket on ' + proto + '://localhost:' + PORT);
+  console.log('Auth token: ' + AUTH_TOKEN);
+  console.log('Open: ' + httpProto + '://localhost:' + PORT + '/?token=' + encodeURIComponent(AUTH_TOKEN));
+});
